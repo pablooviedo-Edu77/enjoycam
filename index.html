@@ -122,11 +122,6 @@
           <i class="fa-solid fa-comments"></i>
           <span>Videochat</span>
         </button>
-        <button id="navAdminBtn" onclick="switchTab('admin')" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition-all duration-200 flex items-center gap-2">
-          <i class="fa-solid fa-shield-halved text-amber-400"></i>
-          <span>Panel Admin</span>
-          <span id="badgePendingReports" class="hidden px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-bold">0</span>
-        </button>
         <button id="signOutBtn" type="button" onclick="signOutCurrentUser()" title="Cerrar sesión" aria-label="Cerrar sesión" class="hidden w-9 h-9 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-colors">
           <i class="fa-solid fa-right-from-bracket"></i>
         </button>
@@ -473,6 +468,7 @@
                 <div class="flex items-center gap-2">
                   <i class="fa-solid fa-inbox text-indigo-400"></i>
                   <h3 class="font-bold text-sm text-white">Bandeja de Reportes en Tiempo Real</h3>
+                  <span id="badgePendingReports" class="hidden px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-bold">0</span>
                 </div>
                 <span id="adminSyncLabel" class="text-xs text-slate-400">Conectando...</span>
               </div>
@@ -761,6 +757,7 @@
         }
 
         document.getElementById('adminSyncLabel').textContent = 'Firestore Realtime Sync';
+        if (location.hash === '#moderation' && userIsModerator) switchTab('admin');
         if (termsAccepted) activateVerifiedSession();
       });
     }
@@ -1967,21 +1964,28 @@
       const chatView = document.getElementById('chatView');
       const adminView = document.getElementById('adminView');
       const chatBtn = document.getElementById('navChatBtn');
-      const adminBtn = document.getElementById('navAdminBtn');
+
+      if (tab === 'admin' && !demoMode && (!userIsVerified || !userIsModerator)) {
+        showToast('Esta cuenta no tiene permisos de moderación.', 'error');
+        return;
+      }
 
       if (tab === 'chat') {
         chatView.classList.remove('hidden');
         adminView.classList.add('hidden');
         chatBtn.className = 'px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 bg-indigo-600 text-white shadow-md shadow-indigo-600/30 flex items-center gap-2';
-        adminBtn.className = 'px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition-all duration-200 flex items-center gap-2';
       } else {
         chatView.classList.add('hidden');
         adminView.classList.remove('hidden');
         adminView.classList.add('flex');
-        adminBtn.className = 'px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 bg-amber-600 text-white shadow-md shadow-amber-600/30 flex items-center gap-2';
         chatBtn.className = 'px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition-all duration-200 flex items-center gap-2';
       }
     };
+
+    window.addEventListener('hashchange', () => {
+      if (location.hash === '#moderation') switchTab('admin');
+      else switchTab('chat');
+    });
 
     // TOS Acceptance
     const tosCheck = document.getElementById('tosCheck');
@@ -2072,6 +2076,7 @@
     window.addEventListener('DOMContentLoaded', () => {
       initAuth();
       renderBlacklistChips();
+      if (location.hash === '#moderation' && demoMode) switchTab('admin');
     });
 
   </script>
