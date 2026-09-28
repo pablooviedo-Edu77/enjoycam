@@ -15,18 +15,18 @@ service cloud.firestore {
       return !exists(/databases/$(database)/documents/artifacts/strangercam-prod/public/data/bans/$(request.auth.uid));
     }
 
-    function activeRoomContains(roomId) {
+    function activeRoomContains(appId, roomId) {
       return roomId is string &&
         exists(/databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomId)) &&
         request.auth.uid in get(/databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomId)).data.participants &&
         !('endedAt' in get(/databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomId)).data);
     }
 
-    function validPresence() {
+    function validPresence(appId) {
       return request.resource.data.keys().hasOnly(['uid', 'lastSeen', 'inRoom', 'roomId']) &&
         request.resource.data.uid == request.auth.uid &&
         request.resource.data.lastSeen is int && request.resource.data.inRoom is bool &&
-        (!request.resource.data.inRoom || activeRoomContains(request.resource.data.roomId));
+        (!request.resource.data.inRoom || activeRoomContains(appId, request.resource.data.roomId));
     }
 
     function appPath(appId) {
@@ -53,7 +53,7 @@ service cloud.firestore {
           request.resource.data.status == 'waiting' &&
           request.resource.data.timestamp is int) ||
         (collection == 'presence' && documentId == request.auth.uid &&
-          validPresence())
+          validPresence(appId))
       );
 
       allow update: if appPath(appId) && verified() && notBanned() && (
@@ -63,7 +63,7 @@ service cloud.firestore {
           request.resource.data.status == 'waiting' &&
           request.resource.data.timestamp is int) ||
         (collection == 'presence' && documentId == request.auth.uid &&
-          validPresence()) ||
+          validPresence(appId)) ||
         (collection == 'rooms' && request.auth.uid in resource.data.participants && (
           (request.auth.uid == resource.data.initiatorUid &&
             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['offer']) &&
