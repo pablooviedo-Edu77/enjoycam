@@ -1,0 +1,15 @@
+# Firebase local configuration and credentials
+.firebaserc
+.firebase/
+.firebase-debug.log
+firebase-config.local.js
+service-account*.json
+functions/.env
+functions/.env.*
+functions/node_modules/
+functions/lib/
+
+# Python and generated deployment output
+__pycache__/
+*.py[cod]
+_site/

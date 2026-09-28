@@ -1,0 +1,115 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function verified() {
+      return request.auth != null &&
+        request.auth.token.strangercamVerified == true &&
+        request.auth.token.otpAuthTime == request.auth.token.auth_time;
+    }
+
+    function moderator() {
+      return verified() && request.auth.token.moderator == true;
+    }
+
+    function notBanned() {
+      return !exists(/databases/$(database)/documents/artifacts/strangercam-prod/public/data/bans/$(request.auth.uid));
+    }
+
+    function activeRoomContains(roomId) {
+      return roomId is string &&
+        exists(/databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomId)) &&
+        request.auth.uid in get(/databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomId)).data.participants &&
+        !('endedAt' in get(/databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomId)).data);
+    }
+
+    function validPresence() {
+      return request.resource.data.keys().hasOnly(['uid', 'lastSeen', 'inRoom', 'roomId']) &&
+        request.resource.data.uid == request.auth.uid &&
+        request.resource.data.lastSeen is int && request.resource.data.inRoom is bool &&
+        (!request.resource.data.inRoom || activeRoomContains(request.resource.data.roomId));
+    }
+
+    function appPath(appId) {
+      return appId == 'strangercam-prod';
+    }
+
+    match /artifacts/{appId}/public/data/{collection}/{documentId} {
+      allow read: if appPath(appId) && verified() && (
+        (collection == 'bans' && (documentId == request.auth.uid || moderator())) ||
+        (notBanned() && (
+          (collection == 'presence' && documentId == request.auth.uid) ||
+          (collection == 'stats' && documentId == 'summary') ||
+          (collection == 'queue' && documentId == request.auth.uid) ||
+          (collection == 'rooms' && request.auth.uid in resource.data.participants) ||
+          (collection == 'settings' && documentId == 'config') ||
+          (collection == 'reports' && moderator())
+        ))
+      );
+
+      allow create: if appPath(appId) && verified() && notBanned() && (
+        (collection == 'queue' && documentId == request.auth.uid &&
+          request.resource.data.keys().hasOnly(['uid', 'status', 'timestamp']) &&
+          request.resource.data.uid == request.auth.uid &&
+          request.resource.data.status == 'waiting' &&
+          request.resource.data.timestamp is int) ||
+        (collection == 'presence' && documentId == request.auth.uid &&
+          validPresence())
+      );
+
+      allow update: if appPath(appId) && verified() && notBanned() && (
+        (collection == 'queue' && documentId == request.auth.uid &&
+          request.resource.data.keys().hasOnly(['uid', 'status', 'timestamp']) &&
+          request.resource.data.uid == request.auth.uid &&
+          request.resource.data.status == 'waiting' &&
+          request.resource.data.timestamp is int) ||
+        (collection == 'presence' && documentId == request.auth.uid &&
+          validPresence()) ||
+        (collection == 'rooms' && request.auth.uid in resource.data.participants && (
+          (request.auth.uid == resource.data.initiatorUid &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['offer']) &&
+            request.resource.data.offer is map && request.resource.data.offer.keys().hasOnly(['type', 'sdp']) &&
+            request.resource.data.offer.type == 'offer' && request.resource.data.offer.sdp is string &&
+            request.resource.data.offer.sdp.size() <= 100000) ||
+          (request.auth.uid != resource.data.initiatorUid &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['answer']) &&
+            request.resource.data.answer is map && request.resource.data.answer.keys().hasOnly(['type', 'sdp']) &&
+            request.resource.data.answer.type == 'answer' && request.resource.data.answer.sdp is string &&
+            request.resource.data.answer.sdp.size() <= 100000)
+        ))
+      );
+
+      allow delete: if appPath(appId) && verified() &&
+        ((collection == 'queue' || collection == 'presence') && documentId == request.auth.uid);
+
+      match /{candidateCollection}/{candidateId} {
+          function roomData() {
+            return get(/databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(documentId)).data;
+          }
+
+          allow read: if appPath(appId) && collection == 'rooms' && verified() && notBanned() &&
+            request.auth.uid in roomData().participants &&
+            candidateCollection in ['callerCandidates', 'calleeCandidates'];
+          allow create: if appPath(appId) && collection == 'rooms' && verified() && notBanned() && request.resource.data.keys().hasOnly([
+            'candidate', 'sdpMid', 'sdpMLineIndex', 'usernameFragment'
+          ]) && (
+            (candidateCollection == 'callerCandidates' && request.auth.uid == roomData().initiatorUid) ||
+            (candidateCollection == 'calleeCandidates' && request.auth.uid != roomData().initiatorUid &&
+              request.auth.uid in roomData().participants)
+          ) && request.resource.data.candidate is string &&
+            request.resource.data.candidate.size() <= 2048 &&
+            (!('sdpMid' in request.resource.data) || request.resource.data.sdpMid == null ||
+              (request.resource.data.sdpMid is string && request.resource.data.sdpMid.size() <= 32)) &&
+            (!('sdpMLineIndex' in request.resource.data) || request.resource.data.sdpMLineIndex == null ||
+              (request.resource.data.sdpMLineIndex is int && request.resource.data.sdpMLineIndex >= 0 &&
+                request.resource.data.sdpMLineIndex <= 32)) &&
+            (!('usernameFragment' in request.resource.data) || request.resource.data.usernameFragment == null ||
+              (request.resource.data.usernameFragment is string && request.resource.data.usernameFragment.size() <= 256));
+          allow update, delete: if false;
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

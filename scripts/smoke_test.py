@@ -15,6 +15,9 @@ HTML_FILE = ROOT / "index.html"
 REQUIRED_IDS = {
     "tosModal",
     "tosCheck",
+    "authModal",
+    "emailAuthForm",
+    "emailCodeStep",
     "chatView",
     "remoteVideo",
     "localVideo",

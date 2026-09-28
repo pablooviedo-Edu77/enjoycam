@@ -127,6 +127,9 @@
           <span>Panel Admin</span>
           <span id="badgePendingReports" class="hidden px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-bold">0</span>
         </button>
+        <button id="signOutBtn" type="button" onclick="signOutCurrentUser()" title="Cerrar sesión" aria-label="Cerrar sesión" class="hidden w-9 h-9 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-colors">
+          <i class="fa-solid fa-right-from-bracket"></i>
+        </button>
       </div>
     </div>
   </header>
@@ -178,6 +181,52 @@
           <span>Ingresar al Videochat</span>
           <i class="fa-solid fa-arrow-right"></i>
         </button>
+      </div>
+    </div>
+
+    <!-- EMAIL AUTHENTICATION AND TWO-FACTOR VERIFICATION -->
+    <div id="authModal" class="hidden fixed inset-0 bg-slate-950/95 backdrop-blur-xl z-50 flex items-center justify-center p-4">
+      <div class="max-w-md w-full glass-panel rounded-2xl p-6 sm:p-8 shadow-2xl border border-slate-800 space-y-5">
+        <div class="text-center space-y-2">
+          <div class="w-14 h-14 rounded-2xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center justify-center mx-auto text-2xl">
+            <i class="fa-solid fa-envelope-circle-check"></i>
+          </div>
+          <h2 class="text-xl font-bold text-white">Acceso a StrangerCam</h2>
+          <p class="text-xs text-slate-400">Crea una cuenta o inicia sesión. Te enviaremos un código de seguridad de 8 dígitos.</p>
+        </div>
+
+        <div id="authModeTabs" class="grid grid-cols-2 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+          <button type="button" id="registerModeBtn" onclick="setAuthMode('register')" class="py-2 rounded-lg bg-indigo-600 text-white text-xs font-semibold">Crear cuenta</button>
+          <button type="button" id="loginModeBtn" onclick="setAuthMode('login')" class="py-2 rounded-lg text-slate-400 hover:text-white text-xs font-semibold">Iniciar sesión</button>
+        </div>
+
+        <form id="emailAuthForm" onsubmit="submitEmailAuth(event)" class="space-y-3">
+          <label class="block text-xs text-slate-300 space-y-1.5">
+            Correo electrónico
+            <input id="authEmail" type="email" autocomplete="email" required maxlength="254" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500">
+          </label>
+          <label class="block text-xs text-slate-300 space-y-1.5">
+            Contraseña
+            <input id="authPassword" type="password" autocomplete="new-password" required minlength="10" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500">
+            <span class="text-[10px] text-slate-500">Mínimo 10 caracteres.</span>
+          </label>
+          <label id="authPasswordConfirmWrap" class="block text-xs text-slate-300 space-y-1.5">
+            Repite la contraseña
+            <input id="authPasswordConfirm" type="password" autocomplete="new-password" minlength="10" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500">
+          </label>
+          <button id="authSubmitBtn" type="submit" class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm transition-all">Crear cuenta y enviar código</button>
+        </form>
+
+        <div id="emailCodeStep" class="hidden space-y-3">
+          <p id="emailCodeMessage" class="text-xs text-slate-300 text-center">Escribe el código enviado a tu correo. Caduca en 10 minutos.</p>
+          <label class="block text-xs text-slate-300 space-y-1.5">
+            Código de 8 dígitos
+            <input id="emailCodeInput" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{8}" maxlength="8" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-3 text-center font-mono text-xl tracking-[0.3em] text-white focus:outline-none focus:border-emerald-500">
+          </label>
+          <button type="button" onclick="verifyEmailCode(event)" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm transition-all">Verificar y entrar</button>
+          <button type="button" onclick="resendEmailCode()" class="w-full py-2 text-xs text-indigo-300 hover:text-indigo-200">Enviar otro código</button>
+        </div>
+        <p id="authDemoNote" class="hidden text-[10px] text-amber-300 text-center">Modo demo local: el registro y el código real necesitan Firebase configurado.</p>
       </div>
     </div>
 
@@ -318,7 +367,7 @@
 
         <!-- Chat Input Form -->
         <form id="chatForm" onsubmit="sendChatMessage(event)" class="p-3 border-t border-slate-800 bg-slate-950/50 flex items-center gap-2">
-          <input type="text" id="chatInput" placeholder="Escribe un mensaje aquí..." disabled autocomplete="off"
+          <input type="text" id="chatInput" placeholder="Escribe un mensaje aquí..." disabled autocomplete="off" maxlength="1000"
             class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-all disabled:opacity-50">
           <button type="submit" id="sendChatBtn" disabled class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white transition-all">
             <i class="fa-solid fa-paper-plane text-xs"></i>
@@ -341,7 +390,7 @@
           <p class="text-xs text-slate-400 mt-1">Introduce el PIN o contraseña de moderador para ingresar.</p>
         </div>
         <form onsubmit="verifyAdminPin(event)" class="space-y-3">
-          <input type="password" id="adminPinInput" placeholder="Contraseña Admin (Demo: admin123)" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-center text-white focus:outline-none focus:border-indigo-500">
+          <input type="password" id="adminPinInput" placeholder="Contraseña Admin (Demo: admin123)" autocomplete="current-password" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-center text-white focus:outline-none focus:border-indigo-500">
           <button type="submit" class="w-full py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs transition-all shadow-md">
             Desbloquear Panel
           </button>
@@ -449,7 +498,7 @@
                 </div>
                 <!-- Manual Ban Input -->
                 <div class="flex items-center gap-2">
-                  <input type="text" id="manualBanUid" placeholder="ID de usuario..." class="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-white">
+                  <input type="text" id="manualBanUid" placeholder="ID de usuario..." maxlength="128" class="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-white">
                   <button onclick="manualBanUser()" class="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-semibold">
                     Banear UID
                   </button>
@@ -475,7 +524,7 @@
               <p class="text-xs text-slate-400">Las palabras en esta lista serán censuradas con asteriscos (<span class="font-mono text-amber-400">****</span>) en el chat en tiempo real.</p>
               
               <div class="flex gap-2">
-                <input type="text" id="newWordInput" placeholder="Nueva palabra prohibida..." class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500">
+                <input type="text" id="newWordInput" placeholder="Nueva palabra prohibida..." maxlength="40" class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500">
                 <button onclick="addBlacklistWord()" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition-all">
                   Añadir
                 </button>
@@ -538,7 +587,7 @@
 
         <div>
           <label class="block text-slate-400 mb-1 font-medium">Detalles adicionales (Opcional):</label>
-          <textarea id="reportDetails" rows="3" placeholder="Describe brevemente lo ocurrido..." class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-rose-500 resize-none"></textarea>
+          <textarea id="reportDetails" rows="3" maxlength="1000" placeholder="Describe brevemente lo ocurrido..." class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-rose-500 resize-none"></textarea>
         </div>
 
         <div class="flex items-center justify-end gap-2 pt-2">
@@ -557,15 +606,20 @@
   <!-- TOAST CONTAINER -->
   <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
+  <script src="./firebase-config.js"></script>
+
   <!-- Firebase JS SDK v11.6.1 Module Script -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { 
       getAuth, 
-      signInAnonymously, 
-      signInWithCustomToken, 
-      onAuthStateChanged 
+      createUserWithEmailAndPassword,
+      signInWithEmailAndPassword,
+      getIdTokenResult,
+      onAuthStateChanged,
+      signOut
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js";
     import { 
       getFirestore, 
       doc, 
@@ -576,8 +630,6 @@
       collection, 
       onSnapshot, 
       addDoc, 
-      getDocs,
-      runTransaction
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     // Global Environment Configs
@@ -597,11 +649,13 @@
 
     // Firebase Initialization
     let app, auth, db;
+    let functionsApi;
     try {
       if (!hasFirebaseConfig) throw new Error('Firebase configuration not provided');
       app = initializeApp(firebaseConfig);
       auth = getAuth(app);
       db = getFirestore(app);
+      functionsApi = getFunctions(app, 'us-central1');
     } catch (e) {
       app = null;
       auth = null;
@@ -613,6 +667,12 @@
     // STATE VARIABLES
     let currentUser = null;
     let userId = null;
+    let userIsVerified = false;
+    let userOtpVerified = false;
+    let userIsModerator = false;
+    let termsAccepted = false;
+    let authMode = 'register';
+    let firestoreListenersStarted = false;
     let localStream = null;
     let remoteStream = null;
     let peerConnection = null;
@@ -621,6 +681,7 @@
     let isCaller = false;
     let chatDataChannel = null;
     let pendingChatMessages = [];
+    let pendingIceCandidates = [];
     let callState = 'idle'; // 'idle', 'searching', 'connected'
     let isMuted = false;
     let isCamOff = false;
@@ -630,11 +691,13 @@
     const localSessionId = Math.random().toString(36).slice(2, 12);
     let roomUnsubscribe = null;
     let queueUnsubscribe = null;
-    let queueCollectionUnsubscribe = null;
+    let queueMatchTimer = null;
+    let queueHeartbeatTimer = null;
     let candidateUnsubscribes = [];
     let pairingInProgress = false;
     let roomSetupStarted = false;
     let bansUnsubscribe = null;
+    let moderatorBansUnsubscribe = null;
     let reportsUnsubscribe = null;
     let settingsUnsubscribe = null;
     let presenceUnsubscribe = null;
@@ -658,31 +721,165 @@
         initLocalDemo();
         return;
       }
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (err) {
-        console.warn('Firebase authentication unavailable; switching to local demo mode.', err);
-        demoMode = true;
-        initLocalDemo();
-        return;
-      }
+      onAuthStateChanged(auth, async (user) => {
+        currentUser = user;
+        userId = user?.uid || null;
+        userIsVerified = false;
+        userOtpVerified = false;
+        userIsModerator = false;
+        document.getElementById('headerMyUid').textContent = userId || 'Inicia sesión';
+        document.getElementById('platformModeLabel').textContent = 'Firebase';
+        document.getElementById('adminSyncLabel').textContent = 'Autenticación requerida';
+        document.getElementById('signOutBtn').classList.toggle('hidden', !user);
 
-      onAuthStateChanged(auth, (user) => {
-        if (user) {
-          currentUser = user;
-          userId = user.uid;
-        } else {
-          userId = 'user_' + Math.random().toString(36).substr(2, 9);
+        if (!user) {
+          [bansUnsubscribe, moderatorBansUnsubscribe, reportsUnsubscribe,
+            settingsUnsubscribe, presenceUnsubscribe].forEach((unsubscribe) => unsubscribe?.());
+          bansUnsubscribe = null;
+          moderatorBansUnsubscribe = null;
+          reportsUnsubscribe = null;
+          settingsUnsubscribe = null;
+          presenceUnsubscribe = null;
+          clearInterval(presenceHeartbeatTimer);
+          presenceHeartbeatTimer = null;
+          firestoreListenersStarted = false;
+          isAdminUnlocked = false;
+          document.getElementById('adminDashboard').classList.add('hidden');
+          document.getElementById('adminAuthLock').classList.remove('hidden');
+          switchTab('chat');
+          if (termsAccepted) showAuthModal();
+          return;
         }
-        document.getElementById('headerMyUid').textContent = userId;
-        document.getElementById('platformModeLabel').textContent = 'Firebase Live';
+
+        try {
+          const token = await getIdTokenResult(user);
+          userIsVerified = token.claims.strangercamVerified === true;
+          userOtpVerified = userIsVerified && token.claims.otpAuthTime === token.claims.auth_time;
+          userIsModerator = token.claims.moderator === true;
+        } catch (error) {
+          console.error('Unable to read account claims:', error);
+        }
+
+        if (!userOtpVerified) {
+          if (termsAccepted) showEmailCodeStep('Solicita un código para verificar ' + (user.email || 'tu correo') + '.');
+          return;
+        }
+
         document.getElementById('adminSyncLabel').textContent = 'Firestore Realtime Sync';
-        initFirestoreListeners();
+        if (termsAccepted) activateVerifiedSession();
       });
+    }
+
+    async function activateVerifiedSession() {
+      if (!currentUser || !userIsVerified || !userOtpVerified || !termsAccepted) return;
+      document.getElementById('authModal').classList.add('hidden');
+      if (!firestoreListenersStarted) {
+        firestoreListenersStarted = true;
+        initFirestoreListeners();
+      }
+      if (!localStream) await startLocalCamera();
+    }
+
+    window.signOutCurrentUser = async function() {
+      if (demoMode || !auth) return;
+      await disconnectCall();
+      localStream?.getTracks().forEach((track) => track.stop());
+      localStream = null;
+      document.getElementById('localVideo').srcObject = null;
+      await signOut(auth);
+    };
+
+    function showAuthModal() {
+      document.getElementById('emailAuthForm').classList.remove('hidden');
+      document.getElementById('emailCodeStep').classList.add('hidden');
+      document.getElementById('authModeTabs').classList.remove('hidden');
+      document.getElementById('authModal').classList.remove('hidden');
+    }
+
+    function showEmailCodeStep(message) {
+      document.getElementById('emailAuthForm').classList.add('hidden');
+      document.getElementById('authModeTabs').classList.add('hidden');
+      document.getElementById('emailCodeStep').classList.remove('hidden');
+      document.getElementById('authModal').classList.remove('hidden');
+      document.getElementById('emailCodeMessage').textContent = message;
+    }
+
+    window.setAuthMode = function(mode) {
+      authMode = mode === 'login' ? 'login' : 'register';
+      const registering = authMode === 'register';
+      document.getElementById('authPasswordConfirmWrap').classList.toggle('hidden', !registering);
+      document.getElementById('authPasswordConfirm').required = registering;
+      document.getElementById('authSubmitBtn').textContent = registering
+        ? 'Crear cuenta y enviar código'
+        : 'Iniciar sesión';
+      document.getElementById('registerModeBtn').className = registering
+        ? 'py-2 rounded-lg bg-indigo-600 text-white text-xs font-semibold'
+        : 'py-2 rounded-lg text-slate-400 hover:text-white text-xs font-semibold';
+      document.getElementById('loginModeBtn').className = registering
+        ? 'py-2 rounded-lg text-slate-400 hover:text-white text-xs font-semibold'
+        : 'py-2 rounded-lg bg-indigo-600 text-white text-xs font-semibold';
+    };
+
+    window.submitEmailAuth = async function(event) {
+      event.preventDefault();
+      const email = document.getElementById('authEmail').value.trim();
+      const password = document.getElementById('authPassword').value;
+      const confirmPassword = document.getElementById('authPasswordConfirm').value;
+      try {
+        let credential;
+        if (authMode === 'register') {
+          if (password.length < 10) throw new Error('La contraseña debe tener al menos 10 caracteres.');
+          if (password !== confirmPassword) throw new Error('Las contraseñas no coinciden.');
+          credential = await createUserWithEmailAndPassword(auth, email, password);
+        } else {
+          credential = await signInWithEmailAndPassword(auth, email, password);
+        }
+        currentUser = credential.user;
+        userId = currentUser.uid;
+        await requestEmailVerificationCode();
+      } catch (error) {
+        showToast(error.message || 'No se pudo completar el acceso.', 'error');
+      }
+    };
+
+    async function requestEmailVerificationCode() {
+      if (!currentUser || !functionsApi) throw new Error('Inicia sesión antes de pedir el código.');
+      const requestCode = httpsCallable(functionsApi, 'requestEmailCode');
+      const result = await requestCode();
+      showEmailCodeStep('Enviamos un código de 8 dígitos a ' + (currentUser.email || 'tu correo') + '. Caduca en 10 minutos.');
+      showToast('Código enviado. Revisa tu correo.', 'success');
+    }
+
+    window.resendEmailCode = async function() {
+      try {
+        await requestEmailVerificationCode();
+      } catch (error) {
+        showToast(error.message || 'No se pudo reenviar el código.', 'error');
+      }
+    };
+
+    window.verifyEmailCode = async function(event) {
+      event?.preventDefault();
+      const code = document.getElementById('emailCodeInput').value.trim();
+      try {
+        const verifyCode = httpsCallable(functionsApi, 'verifyEmailCode');
+        await verifyCode({ code });
+        await refreshVerifiedClaims();
+        showToast('Correo verificado correctamente.', 'success');
+      } catch (error) {
+        showToast(error.message || 'No se pudo verificar el código.', 'error');
+      }
+    };
+
+    async function refreshVerifiedClaims() {
+      if (!currentUser) return;
+      await currentUser.getIdToken(true);
+      const token = await getIdTokenResult(currentUser);
+      userIsVerified = token.claims.strangercamVerified === true;
+      userOtpVerified = userIsVerified && token.claims.otpAuthTime === token.claims.auth_time;
+      userIsModerator = token.claims.moderator === true;
+      if (!userOtpVerified) throw new Error('El código no quedó validado para esta sesión.');
+      await activateVerifiedSession();
     }
 
     function readLocalDemoState() {
@@ -782,50 +979,37 @@
 
       syncPresenceState();
       presenceHeartbeatTimer = setInterval(syncPresenceState, 15000);
-      presenceUnsubscribe = onSnapshot(getPublicColl('presence'), (snapshot) => {
-        const activeRooms = new Set();
-        let activeUsers = 0;
-        snapshot.forEach((presenceDoc) => {
-          const presence = presenceDoc.data();
-          if (Date.now() - Number(presence.lastSeen || 0) > 45000) return;
-          activeUsers++;
-          if (presence.inRoom) activeRooms.add(presence.roomId || presenceDoc.id);
-        });
-        document.getElementById('headerOnlineUsers').textContent = activeUsers;
-        document.getElementById('statActiveUsers').textContent = activeUsers;
-        document.getElementById('statActiveRooms').textContent = activeRooms.size;
+      presenceUnsubscribe = onSnapshot(getPublicDoc('stats', 'summary'), (snapshot) => {
+        const stats = snapshot.exists() ? snapshot.data() : {};
+        document.getElementById('headerOnlineUsers').textContent = Number(stats.activeUsers || 0);
+        document.getElementById('statActiveUsers').textContent = Number(stats.activeUsers || 0);
+        document.getElementById('statActiveRooms').textContent = Number(stats.activeRooms || 0);
       }, (error) => console.warn('Presence listener failed:', error));
 
       window.addEventListener('beforeunload', () => {
         clearInterval(presenceHeartbeatTimer);
         deleteDoc(getPublicDoc('presence', userId)).catch(() => {});
+        deleteDoc(getPublicDoc('queue', userId)).catch(() => {});
       }, { once: true });
 
-      // 1. Listen for Ban Status on current User
-      try {
-        bansUnsubscribe = onSnapshot(getPublicColl('bans'), (snapshot) => {
-          let isBanned = false;
-          let reason = '';
-          snapshot.forEach(docSnap => {
-            if (docSnap.id === userId || docSnap.data().uid === userId) {
-              isBanned = true;
-              reason = docSnap.data().reason || 'Violación de las normas de convivencia.';
-            }
-          });
+      // Users may read their own ban; moderators may also review the full list.
+      bansUnsubscribe = onSnapshot(getPublicDoc('bans', userId), (banSnapshot) => {
+        if (banSnapshot.exists()) {
+          disconnectCall();
+          document.getElementById('bannedModal').classList.remove('hidden');
+          document.getElementById('banReasonDisplay').textContent =
+            `Motivo: ${banSnapshot.data().reason || 'Violación de las normas de convivencia.'}`;
+        } else {
+          document.getElementById('bannedModal').classList.add('hidden');
+        }
+      }, (error) => console.warn('Own ban listener failed:', error));
 
-          if (isBanned) {
-            disconnectCall();
-            document.getElementById('bannedModal').classList.remove('hidden');
-            document.getElementById('banReasonDisplay').textContent = `Motivo: ${reason}`;
-          } else {
-            document.getElementById('bannedModal').classList.add('hidden');
-          }
-
-          // Update Admin Metric for Bans
+      if (userIsModerator) {
+        moderatorBansUnsubscribe = onSnapshot(getPublicColl('bans'), (snapshot) => {
           document.getElementById('statBannedUsers').textContent = snapshot.size;
           renderAdminBans(snapshot);
-        }, (err) => console.log("Bans snapshot listener error:", err));
-      } catch (e) { console.error(e); }
+        }, (error) => console.warn('Moderator bans listener failed:', error));
+      }
 
       // 2. Listen for Global Moderation Blacklist & Announcements
       try {
@@ -845,8 +1029,8 @@
         }, (err) => console.log("Settings listener error:", err));
       } catch (e) { console.error(e); }
 
-      // 3. Listen for Reports in Admin Panel
-      try {
+      // Report contents are visible only to server-authorized moderators.
+      if (userIsModerator) {
         reportsUnsubscribe = onSnapshot(getPublicColl('reports'), (snapshot) => {
           const reports = [];
           snapshot.forEach(docSnap => reports.push({ id: docSnap.id, ...docSnap.data() }));
@@ -861,8 +1045,8 @@
           }
 
           renderAdminReports(reports);
-        }, (err) => console.log("Reports listener error:", err));
-      } catch (e) { console.error(e); }
+        }, (err) => console.warn('Reports listener error:', err));
+      }
 
     }
 
@@ -929,6 +1113,7 @@
           const match = snapshot.data();
           if (!match || match.status !== 'matched' || callState !== 'searching' || roomSetupStarted) return;
           roomSetupStarted = true;
+          stopQueueListeners();
           currentRoomId = match.roomId;
           currentStrangerUid = match.peerUid;
           isCaller = match.initiatorUid === userId;
@@ -940,62 +1125,33 @@
           });
         });
 
-        queueCollectionUnsubscribe = onSnapshot(getPublicColl('queue'), () => {
+        queueHeartbeatTimer = setInterval(() => {
+          if (callState === 'searching' && !roomSetupStarted) {
+            getDoc(queueRef).then((snapshot) => {
+              if (snapshot.exists() && snapshot.data().status === 'waiting') {
+                return updateDoc(queueRef, { timestamp: Date.now() });
+              }
+            }).catch((error) => console.warn('Queue heartbeat failed:', error));
+          }
+        }, 10000);
+        queueMatchTimer = setInterval(() => {
           tryMatchQueuePeers().catch((error) => console.error('Queue matching failed:', error));
-        });
+        }, 2500);
         await tryMatchQueuePeers();
 
-        // Fall back to the interactive demo when no real peer joins.
-        setTimeout(() => {
-          if (callState === 'searching' && !roomSetupStarted) {
-            stopQueueListeners();
-            if (userId && db) deleteDoc(getPublicDoc('queue', userId)).catch(() => {});
-            startSimulatedStrangerCall();
-          }
-        }, 3200);
-
       } catch (err) {
-        console.log("Firestore pairing fallback:", err);
-        startSimulatedStrangerCall();
+        console.error('Firestore pairing failed:', err);
+        showToast('No se pudo buscar una sala. Comprueba tu conexión e inténtalo de nuevo.', 'error');
+        await disconnectCall();
       }
     };
 
     async function tryMatchQueuePeers() {
-      if (callState !== 'searching' || pairingInProgress || !userId) return;
+      if (callState !== 'searching' || pairingInProgress || !userId || !functionsApi) return;
       pairingInProgress = true;
       try {
-        const queueSnapshot = await getDocs(getPublicColl('queue'));
-        const candidates = queueSnapshot.docs
-          .filter((item) => item.id !== userId && item.data().status === 'waiting' && Date.now() - item.data().timestamp < 30000)
-          .sort((first, second) => first.data().timestamp - second.data().timestamp);
-
-        for (const candidate of candidates) {
-          const roomId = `room_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-          const selfRef = getPublicDoc('queue', userId);
-          const peerRef = getPublicDoc('queue', candidate.id);
-          const matched = await runTransaction(db, async (transaction) => {
-            const [selfSnapshot, peerSnapshot] = await Promise.all([
-              transaction.get(selfRef),
-              transaction.get(peerRef)
-            ]);
-            if (!selfSnapshot.exists() || !peerSnapshot.exists() ||
-                selfSnapshot.data().status !== 'waiting' || peerSnapshot.data().status !== 'waiting') {
-              return false;
-            }
-
-            const selfTime = selfSnapshot.data().timestamp;
-            const peerTime = peerSnapshot.data().timestamp;
-            const initiatorUid = selfTime < peerTime || (selfTime === peerTime && userId < candidate.id)
-              ? userId
-              : candidate.id;
-            const matchData = { status: 'matched', roomId, initiatorUid };
-            transaction.update(selfRef, { ...matchData, peerUid: candidate.id });
-            transaction.update(peerRef, { ...matchData, peerUid: userId });
-            return true;
-          });
-
-          if (matched) break;
-        }
+        const matchQueue = httpsCallable(functionsApi, 'matchQueue');
+        await matchQueue();
       } finally {
         pairingInProgress = false;
       }
@@ -1006,15 +1162,17 @@
         queueUnsubscribe();
         queueUnsubscribe = null;
       }
-      if (queueCollectionUnsubscribe) {
-        queueCollectionUnsubscribe();
-        queueCollectionUnsubscribe = null;
-      }
+      clearInterval(queueMatchTimer);
+      queueMatchTimer = null;
+      clearInterval(queueHeartbeatTimer);
+      queueHeartbeatTimer = null;
     }
 
     // Setup WebRTC Connection with Firestore Signaling
     async function setupWebRTCRoom(roomId) {
       peerConnection = new RTCPeerConnection(rtcConfig);
+      let settingRemoteDescription = false;
+      let answerApplied = false;
       if (isCaller) {
         configureChatDataChannel(peerConnection.createDataChannel('strangercam-chat'));
       } else {
@@ -1047,22 +1205,36 @@
         // Create Offer
         peerConnection.onicecandidate = (event) => {
           if (event.candidate) {
-            addDoc(callerCandidatesCollection, event.candidate.toJSON());
+            addDoc(callerCandidatesCollection, serializeIceCandidate(event.candidate))
+              .catch((error) => console.warn('Unable to publish caller ICE candidate:', error));
           }
         };
 
         const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
-        await setDoc(roomRef, { offer: { type: offer.type, sdp: offer.sdp } });
+        await updateDoc(roomRef, { offer: { type: offer.type, sdp: offer.sdp } });
 
         // Listen for Answer
         roomUnsubscribe = onSnapshot(roomRef, async (snapshot) => {
           const data = snapshot.data();
-          if (data && data.answer && !peerConnection.currentRemoteDescription) {
-            const rtcAnswer = new RTCSessionDescription(data.answer);
-            await peerConnection.setRemoteDescription(rtcAnswer);
-            callState = 'connected';
-            updateCallUIState('connected');
+          if (data?.endedAt) {
+            await disconnectCall();
+            return;
+          }
+          if (data && data.answer && !peerConnection.currentRemoteDescription && !settingRemoteDescription) {
+            settingRemoteDescription = true;
+            try {
+              const rtcAnswer = new RTCSessionDescription(data.answer);
+              await peerConnection.setRemoteDescription(rtcAnswer);
+              await flushPendingIceCandidates();
+              answerApplied = true;
+              callState = 'connected';
+              updateCallUIState('connected');
+            } catch (error) {
+              console.error('Unable to apply WebRTC answer:', error);
+              showToast('No se pudo aplicar la respuesta WebRTC.', 'error');
+              await disconnectCall();
+            }
           }
         });
 
@@ -1070,7 +1242,7 @@
         candidateUnsubscribes.push(onSnapshot(calleeCandidatesCollection, (snapshot) => {
           snapshot.docChanges().forEach(async (change) => {
             if (change.type === 'added') {
-              await peerConnection.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+              await addRemoteIceCandidate(change.doc.data());
             }
           });
         }));
@@ -1079,27 +1251,68 @@
         // Create Answer
         peerConnection.onicecandidate = (event) => {
           if (event.candidate) {
-            addDoc(calleeCandidatesCollection, event.candidate.toJSON());
+            addDoc(calleeCandidatesCollection, serializeIceCandidate(event.candidate))
+              .catch((error) => console.warn('Unable to publish callee ICE candidate:', error));
           }
         };
 
         roomUnsubscribe = onSnapshot(roomRef, async (roomSnapshot) => {
           const roomData = roomSnapshot.data();
-          if (!roomData || !roomData.offer || peerConnection.remoteDescription) return;
-          await peerConnection.setRemoteDescription(new RTCSessionDescription(roomData.offer));
-          const answer = await peerConnection.createAnswer();
-          await peerConnection.setLocalDescription(answer);
-          await updateDoc(roomRef, { answer: { type: answer.type, sdp: answer.sdp } });
+          if (roomData?.endedAt) {
+            await disconnectCall();
+            return;
+          }
+          if (!roomData || !roomData.offer || peerConnection.remoteDescription || settingRemoteDescription || answerApplied) return;
+          settingRemoteDescription = true;
+          try {
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(roomData.offer));
+            await flushPendingIceCandidates();
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            await updateDoc(roomRef, { answer: { type: answer.type, sdp: answer.sdp } });
+            answerApplied = true;
+          } catch (error) {
+            settingRemoteDescription = false;
+            console.error('Unable to apply WebRTC offer:', error);
+            showToast('No se pudo aplicar la oferta WebRTC.', 'error');
+            await disconnectCall();
+          }
         });
 
         // Listen for Caller ICE candidates
         candidateUnsubscribes.push(onSnapshot(callerCandidatesCollection, (snapshot) => {
           snapshot.docChanges().forEach(async (change) => {
             if (change.type === 'added') {
-              await peerConnection.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+              await addRemoteIceCandidate(change.doc.data());
             }
           });
         }));
+      }
+    }
+
+    function serializeIceCandidate(candidate) {
+      return Object.fromEntries(
+        Object.entries(candidate.toJSON()).filter(([, value]) => value !== undefined)
+      );
+    }
+
+    async function addRemoteIceCandidate(candidateData) {
+      if (!peerConnection) return;
+      if (!peerConnection.remoteDescription) {
+        pendingIceCandidates.push(candidateData);
+        return;
+      }
+      try {
+        await peerConnection.addIceCandidate(new RTCIceCandidate(candidateData));
+      } catch (error) {
+        console.warn('Unable to apply remote ICE candidate:', error);
+      }
+    }
+
+    async function flushPendingIceCandidates() {
+      const queuedCandidates = pendingIceCandidates.splice(0);
+      for (const candidate of queuedCandidates) {
+        await addRemoteIceCandidate(candidate);
       }
     }
 
@@ -1113,7 +1326,9 @@
       channel.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
-          if (typeof message.text === 'string') receiveChatMessage('Extraño', message.text);
+          if (typeof message.text === 'string' && message.text.length <= 1000) {
+            receiveChatMessage('Extraño', message.text);
+          }
         } catch (error) {
           console.warn('Ignored invalid chat data-channel message.');
         }
@@ -1194,11 +1409,20 @@
 
     // Disconnect Current Call
     window.disconnectCall = async function() {
+      const leavingRoomId = currentRoomId;
       callState = 'idle';
       simulatedStrangerActive = false;
       currentStrangerUid = null;
       currentRoomId = null;
       clearInterval(simCanvasInterval);
+
+      if (leavingRoomId && functionsApi && userIsVerified) {
+        try {
+          await httpsCallable(functionsApi, 'leaveRoom')({ roomId: leavingRoomId });
+        } catch (error) {
+          console.warn('Unable to notify room peer:', error);
+        }
+      }
 
       if (peerConnection) {
         peerConnection.close();
@@ -1209,6 +1433,7 @@
         chatDataChannel = null;
       }
       pendingChatMessages = [];
+      pendingIceCandidates = [];
 
       if (roomUnsubscribe) {
         roomUnsubscribe();
@@ -1292,6 +1517,10 @@
       const input = document.getElementById('chatInput');
       let text = input.value.trim();
       if (!text || callState !== 'connected') return;
+      if (text.length > 1000) {
+        showToast('El mensaje supera el límite de 1000 caracteres.', 'error');
+        return;
+      }
 
       // Apply Auto-Moderation Blacklist Censorship
       text = censorText(text);
@@ -1325,6 +1554,7 @@
     };
 
     function receiveChatMessage(sender, text) {
+      if (typeof text !== 'string' || text.length > 1000) return;
       text = censorText(text);
       addChatMessageToLog(sender, text, 'stranger');
     }
@@ -1412,7 +1642,13 @@
       }
 
       try {
-        await addDoc(getPublicColl('reports'), reportData);
+        await httpsCallable(functionsApi, 'submitReport')({
+          reportedUid: reportData.reportedUid,
+          roomId: currentRoomId,
+          category: reportData.category,
+          details: reportData.details,
+          chatSnippet: reportData.chatSnippet
+        });
         showToast("Reporte enviado con éxito a los moderadores.", "success");
         closeReportModal();
         // Auto skip after report
@@ -1427,13 +1663,18 @@
     window.verifyAdminPin = function(e) {
       e.preventDefault();
       const pin = document.getElementById('adminPinInput').value;
-      if (pin === 'admin123' || pin === 'admin') {
+      if (demoMode && (pin === 'admin123' || pin === 'admin')) {
         isAdminUnlocked = true;
         document.getElementById('adminAuthLock').classList.add('hidden');
         document.getElementById('adminDashboard').classList.remove('hidden');
         showToast("Panel de administración desbloqueado", "success");
+      } else if (!demoMode && userIsModerator && userOtpVerified) {
+        isAdminUnlocked = true;
+        document.getElementById('adminAuthLock').classList.add('hidden');
+        document.getElementById('adminDashboard').classList.remove('hidden');
+        showToast('Acceso de moderación verificado.', 'success');
       } else {
-        showToast("PIN incorrecto. Prueba con 'admin123'", "error");
+        showToast(demoMode ? "PIN incorrecto. Prueba con 'admin123'" : 'Esta cuenta no tiene permisos de moderación.', 'error');
       }
     };
 
@@ -1458,12 +1699,12 @@
             <span class="font-bold text-rose-400 flex items-center gap-1">
               <i class="fa-solid fa-triangle-exclamation"></i> ${escapeHtml(r.category)}
             </span>
-            <span class="text-[10px] text-slate-500">${r.dateString || 'Reciente'}</span>
+            <span class="text-[10px] text-slate-500">${escapeHtml(r.dateString || 'Reciente')}</span>
           </div>
 
           <div class="text-slate-300">
-            <span class="text-slate-500">Reportado:</span> <span class="font-mono text-slate-200">${r.reportedUid}</span>
-            <span class="text-slate-500 ml-2">Por:</span> <span class="font-mono text-slate-400">${r.reporterUid}</span>
+            <span class="text-slate-500">Reportado:</span> <span class="font-mono text-slate-200">${escapeHtml(r.reportedUid)}</span>
+            <span class="text-slate-500 ml-2">Por:</span> <span class="font-mono text-slate-400">${escapeHtml(r.reporterUid)}</span>
           </div>
 
           <div class="p-2 bg-slate-900 rounded-lg text-slate-300 italic text-[11px]">
@@ -1478,15 +1719,25 @@
           ` : ''}
 
           <div class="flex items-center gap-2 pt-1">
-            <button onclick="adminBanUser('${r.reportedUid}', '${r.id}')" class="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-lg text-[11px] transition-all">
+            <button type="button" data-report-action="ban" data-uid="${escapeHtml(r.reportedUid)}" data-report-id="${escapeHtml(r.id)}" class="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-lg text-[11px] transition-all">
               <i class="fa-solid fa-ban mr-1"></i> Banear Usuario
             </button>
-            <button onclick="dismissReport('${r.id}')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] transition-all">
+            <button type="button" data-report-action="dismiss" data-report-id="${escapeHtml(r.id)}" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] transition-all">
               Desestimar
             </button>
           </div>
         </div>
       `).join('');
+
+      container.querySelectorAll('[data-report-action]').forEach((button) => {
+        button.addEventListener('click', () => {
+          if (button.dataset.reportAction === 'ban') {
+            adminBanUser(button.dataset.uid, button.dataset.reportId);
+          } else {
+            dismissReport(button.dataset.reportId);
+          }
+        });
+      });
     }
 
     // Ban User Action from Admin
@@ -1508,17 +1759,9 @@
       }
 
       try {
-        await setDoc(getPublicDoc('bans', uidToBan), {
-          uid: uidToBan,
-          bannedAt: Date.now(),
-          bannedDate: new Date().toLocaleString(),
-          reason: 'Baneado por moderación tras reporte de usuario.'
+        await httpsCallable(functionsApi, 'moderateReport')({
+          action: 'ban', uid: uidToBan, reportId: reportIdToDelete || ''
         });
-
-        if (reportIdToDelete) {
-          await deleteDoc(getPublicDoc('reports', reportIdToDelete));
-        }
-
         showToast(`Usuario ${uidToBan} suspendido.`, "success");
       } catch (err) {
         showToast("Error al suspender usuario.", "error");
@@ -1533,7 +1776,7 @@
         return;
       }
       try {
-        await deleteDoc(getPublicDoc('reports', reportId));
+        await httpsCallable(functionsApi, 'moderateReport')({ action: 'dismiss', reportId });
         showToast("Reporte desestimado.", "info");
       } catch (e) {
         showToast("Error al eliminar el reporte.", "error");
@@ -1564,14 +1807,17 @@
       container.innerHTML = bans.map(b => `
         <div class="flex items-center justify-between p-2 bg-slate-950/80 border border-slate-800 rounded-xl">
           <div>
-            <p class="font-mono text-rose-300 font-bold">${b.id}</p>
-            <p class="text-[10px] text-slate-500">${b.bannedDate || 'Sin fecha'}</p>
+            <p class="font-mono text-rose-300 font-bold">${escapeHtml(b.id)}</p>
+            <p class="text-[10px] text-slate-500">${escapeHtml(b.bannedDate || 'Sin fecha')}</p>
           </div>
-          <button onclick="unbanUser('${b.id}')" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-lg text-[11px] transition-all">
+          <button type="button" data-unban-uid="${escapeHtml(b.id)}" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-lg text-[11px] transition-all">
             Revocar Ban
           </button>
         </div>
       `).join('');
+      container.querySelectorAll('[data-unban-uid]').forEach((button) => {
+        button.addEventListener('click', () => unbanUser(button.dataset.unbanUid));
+      });
     }
 
     window.unbanUser = async function(uidToUnban) {
@@ -1582,7 +1828,7 @@
         return;
       }
       try {
-        await deleteDoc(getPublicDoc('bans', uidToUnban));
+        await httpsCallable(functionsApi, 'moderateReport')({ action: 'unban', uid: uidToUnban });
         showToast(`Suspensión de ${uidToUnban} revocada.`, "success");
       } catch (err) {
         showToast("Error al revocar la suspensión.", "error");
@@ -1618,8 +1864,10 @@
         return;
       }
       try {
-        await setDoc(getPublicDoc('settings', 'config'), { blacklist: activeBlacklist }, { merge: true });
-      } catch (e) { console.error(e); }
+        await httpsCallable(functionsApi, 'updateModerationSettings')({ blacklist: activeBlacklist });
+      } catch (error) {
+        showToast(error.message || 'No se pudo actualizar la lista.', 'error');
+      }
     }
 
     function renderBlacklistChips() {
@@ -1629,11 +1877,14 @@
       container.innerHTML = activeBlacklist.map(word => `
         <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-950/60 border border-indigo-800/50 text-indigo-300 text-xs">
           <span>${escapeHtml(word)}</span>
-          <button onclick="removeBlacklistWord('${escapeHtml(word)}')" class="hover:text-rose-400 ml-1">
+          <button type="button" data-blacklist-word="${escapeHtml(word)}" class="hover:text-rose-400 ml-1">
             <i class="fa-solid fa-xmark text-[10px]"></i>
           </button>
         </span>
       `).join('');
+      container.querySelectorAll('[data-blacklist-word]').forEach((button) => {
+        button.addEventListener('click', () => removeBlacklistWord(button.dataset.blacklistWord));
+      });
     }
 
     // Global Announcement Broadcaster
@@ -1651,7 +1902,7 @@
       }
 
       try {
-        await setDoc(getPublicDoc('settings', 'config'), { announcement: text }, { merge: true });
+        await httpsCallable(functionsApi, 'updateModerationSettings')({ announcement: text });
         showToast("Anuncio global emitido", "success");
         input.value = '';
       } catch (e) {
@@ -1667,9 +1918,11 @@
         return;
       }
       try {
-        await setDoc(getPublicDoc('settings', 'config'), { announcement: "" }, { merge: true });
+        await httpsCallable(functionsApi, 'updateModerationSettings')({ announcement: '' });
         showToast("Anuncio global limpiado", "info");
-      } catch (e) {}
+      } catch (error) {
+        showToast(error.message || 'No se pudo limpiar el aviso.', 'error');
+      }
     };
 
     function showGlobalAnnouncement(text) {
@@ -1689,6 +1942,10 @@
 
     // Simulated dummy report generator for testing
     window.generateDummyReport = function() {
+      if (!demoMode) {
+        showToast('Los reportes simulados solo están disponibles en Demo local.', 'info');
+        return;
+      }
       const categories = ['Desnudez/Contenido inapropiado', 'Acoso/Insultos', 'Spam/Bot', 'Menor de edad'];
       const dummyUid = 'user_' + Math.random().toString(36).substr(2, 5);
       const cat = categories[Math.floor(Math.random() * categories.length)];
@@ -1703,14 +1960,9 @@
         dateString: new Date().toLocaleString()
       };
 
-      if (demoMode) {
-        reportData.id = `report_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-        localDemoState.reports.unshift(reportData);
-        saveLocalDemoState();
-        showToast('Reporte de prueba creado.', 'info');
-        return;
-      }
-      addDoc(getPublicColl('reports'), reportData);
+      reportData.id = `report_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      localDemoState.reports.unshift(reportData);
+      saveLocalDemoState();
       showToast("Reporte de prueba creado", "info");
     };
 
@@ -1745,7 +1997,17 @@
 
     window.acceptTos = function() {
       document.getElementById('tosModal').classList.add('hidden');
-      startLocalCamera();
+      termsAccepted = true;
+      if (demoMode) {
+        startLocalCamera();
+      } else if (userOtpVerified && currentUser) {
+        activateVerifiedSession();
+      } else if (currentUser) {
+        showEmailCodeStep('Solicita un código para verificar ' + (currentUser.email || 'tu correo') + '.');
+        requestEmailVerificationCode().catch((error) => showToast(error.message || 'No se pudo enviar el código.', 'error'));
+      } else {
+        showAuthModal();
+      }
     };
 
     // Copy UID Helper

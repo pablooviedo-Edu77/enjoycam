@@ -1,0 +1,23 @@
+{
+  "name": "strangercam-functions",
+  "private": true,
+  "main": "index.js",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "test": "npm run check && npm run test:unit",
+    "check": "node --check index.js && node --check otp.js && node --check otp.test.js && node --check rules.test.js && node --check set-moderator.js",
+    "test:unit": "node --test otp.test.js",
+    "test:rules": "node --test rules.test.js",
+    "moderator": "node set-moderator.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "firebase": "^11.6.1"
+  }
+}
