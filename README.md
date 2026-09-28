@@ -4,7 +4,7 @@ Aplicación de videochat aleatorio con verificación de correo, OTP de 8 dígito
 
 ## Estado desplegado
 
-GitHub Pages sirve el modo demo local hasta configurar un proyecto Firebase. En demo los mensajes son simulados y los datos de moderación viven en el navegador. El OTP no se simula ni se valida en el cliente: la cuenta real se habilita solo con Firebase y Functions configurados.
+`firebase-config.js` ya apunta al proyecto Firebase `igneous-core-391404`, y GitHub Pages sirve esa configuración web pública. El flujo real todavía requiere Authentication, Functions, Firestore Rules y Resend configurados y desplegados; hasta entonces no se completará un alta ni se conectarán salas entre dispositivos. No se simula ni se valida un OTP en el cliente.
 
 ## Requisitos
 
@@ -17,20 +17,11 @@ GitHub Pages sirve el modo demo local hasta configurar un proyecto Firebase. En 
 
 ## Configurar Firebase
 
-1. Crea el proyecto y una aplicación web en Firebase Console. Para desarrollar localmente, configura `firebase-config.js`:
+1. La aplicación web ya está registrada en Firebase y su configuración pública reside en `firebase-config.js`. Estos valores identifican el proyecto y no son credenciales administrativas.
 
-```js
-window.__firebase_config = {
-  apiKey: "...",
-  authDomain: "...",
-  projectId: "...",
-  appId: "..."
-};
-```
+Restringe la API key desde Google Cloud a las APIs y dominios que uses, incluyendo `pablooviedo-edu77.github.io` y `localhost` durante pruebas.
 
-Estos valores identifican la aplicación; no son claves administrativas. Restringe la API key desde Google Cloud a las APIs y dominios que uses, incluyendo `pablooviedo-edu77.github.io` y `localhost` durante pruebas.
-
-Para producción, no hace falta editar el archivo: en GitHub, crea estas **Actions variables** del repositorio para que Pages genere la configuración al publicar: `FIREBASE_API_KEY`, `FIREBASE_AUTH_DOMAIN`, `FIREBASE_PROJECT_ID`, `FIREBASE_APP_ID`; opcionalmente `FIREBASE_STORAGE_BUCKET` y `FIREBASE_MESSAGING_SENDER_ID`.
+Opcionalmente, configura estas **Actions variables** para que Pages genere la configuración al publicar desde el entorno de GitHub: `FIREBASE_API_KEY`, `FIREBASE_AUTH_DOMAIN`, `FIREBASE_PROJECT_ID`, `FIREBASE_APP_ID`; también admite `FIREBASE_STORAGE_BUCKET` y `FIREBASE_MESSAGING_SENDER_ID`.
 
 2. En Authentication, habilita Email/Password. La aplicación crea la cuenta con correo y contraseña; Functions envía un código aleatorio de 8 cifras, válido durante 10 minutos, limitado a 5 intentos y con límites de reenvío. Se almacena un HMAC, no el código en claro. El correo remitente es `EMAIL_FROM` y debe estar verificado en Resend.
 
