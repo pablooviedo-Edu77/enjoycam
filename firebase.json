@@ -7,6 +7,46 @@
   "firestore": {
     "rules": "firestore.rules"
   },
+  "hosting": {
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      ".git/**",
+      ".github/**",
+      "**/node_modules/**",
+      "README.md",
+      "firestore.rules",
+      ".firebaserc.example",
+      "functions/**",
+      "scripts/**",
+      "package-lock.json"
+    ],
+    "headers": [
+      {
+        "source": "/index.html",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache, max-age=0" }
+        ]
+      },
+      {
+        "source": "/firebase-config.js",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache, max-age=0" }
+        ]
+      },
+      {
+        "source": "**",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache, max-age=0" },
+          { "key": "X-Content-Type-Options", "value": "nosniff" },
+          { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+          { "key": "X-Frame-Options", "value": "DENY" },
+          { "key": "Permissions-Policy", "value": "camera=(self), microphone=(self)" }
+        ]
+      }
+    ]
+  },
   "emulators": {
     "auth": { "port": 9099 },
     "functions": { "port": 5001 },

@@ -1,4 +1,4 @@
-name: Deploy StrangerCam to GitHub Pages
+name: Validate StrangerCam for Firebase
 
 on:
   push:
@@ -7,11 +7,9 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: github-pages
+  group: validate-strangercam
   cancel-in-progress: true
 
 jobs:
@@ -33,8 +31,6 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
       - name: Configure Firebase web app when project variables exist
         if: ${{ vars.FIREBASE_API_KEY != '' && vars.FIREBASE_PROJECT_ID != '' && vars.FIREBASE_APP_ID != '' }}
         env:
@@ -54,23 +50,3 @@ jobs:
         run: npx --yes firebase-tools@14 emulators:exec --project strangercam-rules-test --only firestore "npm --prefix functions run test:rules"
       - name: Validate page
         run: python scripts/smoke_test.py --require-node
-      - name: Prepare Pages artifact
-        run: |
-          mkdir _site
-          cp index.html _site/index.html
-          cp firebase-config.js _site/firebase-config.js
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
-
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4

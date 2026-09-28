@@ -1,12 +1,13 @@
-name: Deploy Firebase backend
+name: Deploy Firebase Hosting and Firestore
 
 on:
   push:
     branches: [main]
     paths:
+      - "index.html"
+      - "firebase-config.js"
       - "firebase.json"
       - "firestore.rules"
-      - "functions/**"
       - ".github/workflows/firebase-deploy.yml"
   workflow_dispatch:
 
@@ -41,7 +42,7 @@ jobs:
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
       - name: Install Firebase CLI
         run: npm install --global firebase-tools
-      - name: Deploy Cloud Functions and Firestore Rules
+      - name: Deploy Firebase Hosting and Firestore Rules
         env:
           FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
-        run: firebase deploy --only functions,firestore:rules --project "$FIREBASE_PROJECT_ID" --non-interactive
+        run: firebase deploy --only hosting,firestore:rules --project "$FIREBASE_PROJECT_ID" --non-interactive
