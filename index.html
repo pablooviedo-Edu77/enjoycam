@@ -192,7 +192,7 @@
             <i class="fa-solid fa-envelope-circle-check"></i>
           </div>
           <h2 class="text-xl font-bold text-white">Acceso a StrangerCam</h2>
-          <p class="text-xs text-slate-400">Crea una cuenta o inicia sesión. Te enviaremos un código de seguridad de 8 dígitos.</p>
+          <p class="text-xs text-slate-400">Crea una cuenta o inicia sesión. Verifica tu correo para activar el acceso.</p>
         </div>
 
         <div id="authModeTabs" class="grid grid-cols-2 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
@@ -214,19 +214,15 @@
             Repite la contraseña
             <input id="authPasswordConfirm" type="password" autocomplete="new-password" minlength="10" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500">
           </label>
-          <button id="authSubmitBtn" type="submit" class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm transition-all">Crear cuenta y enviar código</button>
+          <button id="authSubmitBtn" type="submit" class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm transition-all">Crear cuenta</button>
         </form>
 
-        <div id="emailCodeStep" class="hidden space-y-3">
-          <p id="emailCodeMessage" class="text-xs text-slate-300 text-center">Escribe el código enviado a tu correo. Caduca en 10 minutos.</p>
-          <label class="block text-xs text-slate-300 space-y-1.5">
-            Código de 8 dígitos
-            <input id="emailCodeInput" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{8}" maxlength="8" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-3 text-center font-mono text-xl tracking-[0.3em] text-white focus:outline-none focus:border-emerald-500">
-          </label>
-          <button type="button" onclick="verifyEmailCode(event)" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm transition-all">Verificar y entrar</button>
-          <button type="button" onclick="resendEmailCode()" class="w-full py-2 text-xs text-indigo-300 hover:text-indigo-200">Enviar otro código</button>
+        <div id="emailVerificationStep" class="hidden space-y-3">
+          <p id="emailVerificationMessage" class="text-xs text-slate-300 text-center">Revisa tu correo y abre el enlace de verificación.</p>
+          <button type="button" onclick="checkEmailVerification()" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm transition-all">Ya verifiqué mi correo</button>
+          <button type="button" onclick="resendEmailVerification()" class="w-full py-2 text-xs text-indigo-300 hover:text-indigo-200">Reenviar enlace</button>
         </div>
-        <p id="authDemoNote" class="hidden text-[10px] text-amber-300 text-center">Modo demo local: el registro y el código real necesitan Firebase configurado.</p>
+        <p id="authDemoNote" class="hidden text-[10px] text-amber-300 text-center">Modo demo local: el registro requiere Firebase configurado.</p>
       </div>
     </div>
 
@@ -617,7 +613,9 @@
       signInWithEmailAndPassword,
       getIdTokenResult,
       onAuthStateChanged,
-      signOut
+      signOut,
+      sendEmailVerification,
+      reload
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js";
     import { 
@@ -668,7 +666,6 @@
     let currentUser = null;
     let userId = null;
     let userIsVerified = false;
-    let userOtpVerified = false;
     let userIsModerator = false;
     let termsAccepted = false;
     let authMode = 'register';
@@ -725,7 +722,6 @@
         currentUser = user;
         userId = user?.uid || null;
         userIsVerified = false;
-        userOtpVerified = false;
         userIsModerator = false;
         document.getElementById('headerMyUid').textContent = userId || 'Inicia sesión';
         document.getElementById('platformModeLabel').textContent = 'Firebase';
@@ -753,15 +749,14 @@
 
         try {
           const token = await getIdTokenResult(user);
-          userIsVerified = token.claims.strangercamVerified === true;
-          userOtpVerified = userIsVerified && token.claims.otpAuthTime === token.claims.auth_time;
+          userIsVerified = token.claims.email_verified === true;
           userIsModerator = token.claims.moderator === true;
         } catch (error) {
           console.error('Unable to read account claims:', error);
         }
 
-        if (!userOtpVerified) {
-          if (termsAccepted) showEmailCodeStep('Solicita un código para verificar ' + (user.email || 'tu correo') + '.');
+        if (!userIsVerified) {
+          if (termsAccepted) showEmailVerificationStep('Verifica el enlace que enviamos a ' + (user.email || 'tu correo') + '.');
           return;
         }
 
@@ -771,7 +766,7 @@
     }
 
     async function activateVerifiedSession() {
-      if (!currentUser || !userIsVerified || !userOtpVerified || !termsAccepted) return;
+      if (!currentUser || !userIsVerified || !termsAccepted) return;
       document.getElementById('authModal').classList.add('hidden');
       if (!firestoreListenersStarted) {
         firestoreListenersStarted = true;
@@ -791,17 +786,17 @@
 
     function showAuthModal() {
       document.getElementById('emailAuthForm').classList.remove('hidden');
-      document.getElementById('emailCodeStep').classList.add('hidden');
+      document.getElementById('emailVerificationStep').classList.add('hidden');
       document.getElementById('authModeTabs').classList.remove('hidden');
       document.getElementById('authModal').classList.remove('hidden');
     }
 
-    function showEmailCodeStep(message) {
+    function showEmailVerificationStep(message) {
       document.getElementById('emailAuthForm').classList.add('hidden');
       document.getElementById('authModeTabs').classList.add('hidden');
-      document.getElementById('emailCodeStep').classList.remove('hidden');
+      document.getElementById('emailVerificationStep').classList.remove('hidden');
       document.getElementById('authModal').classList.remove('hidden');
-      document.getElementById('emailCodeMessage').textContent = message;
+      document.getElementById('emailVerificationMessage').textContent = message;
     }
 
     window.setAuthMode = function(mode) {
@@ -810,7 +805,7 @@
       document.getElementById('authPasswordConfirmWrap').classList.toggle('hidden', !registering);
       document.getElementById('authPasswordConfirm').required = registering;
       document.getElementById('authSubmitBtn').textContent = registering
-        ? 'Crear cuenta y enviar código'
+        ? 'Crear cuenta'
         : 'Iniciar sesión';
       document.getElementById('registerModeBtn').className = registering
         ? 'py-2 rounded-lg bg-indigo-600 text-white text-xs font-semibold'
@@ -836,49 +831,50 @@
         }
         currentUser = credential.user;
         userId = currentUser.uid;
-        await requestEmailVerificationCode();
+        await reload(currentUser);
+        if (!currentUser.emailVerified) {
+          if (authMode === 'register') await sendEmailVerification(currentUser);
+          showEmailVerificationStep('Abre el enlace de verificación enviado a ' + (currentUser.email || email) + '.');
+          showToast(authMode === 'register' ? 'Enlace de verificación enviado.' : 'Este correo aún no está verificado.', 'info');
+          return;
+        }
+        await refreshVerifiedSession();
       } catch (error) {
         showToast(error.message || 'No se pudo completar el acceso.', 'error');
       }
     };
 
-    async function requestEmailVerificationCode() {
-      if (!currentUser || !functionsApi) throw new Error('Inicia sesión antes de pedir el código.');
-      const requestCode = httpsCallable(functionsApi, 'requestEmailCode');
-      const result = await requestCode();
-      showEmailCodeStep('Enviamos un código de 8 dígitos a ' + (currentUser.email || 'tu correo') + '. Caduca en 10 minutos.');
-      showToast('Código enviado. Revisa tu correo.', 'success');
-    }
-
-    window.resendEmailCode = async function() {
+    window.resendEmailVerification = async function() {
       try {
-        await requestEmailVerificationCode();
+        if (!currentUser) throw new Error('Inicia sesión antes de reenviar el enlace.');
+        await sendEmailVerification(currentUser);
+        showToast('Enlace de verificación enviado.', 'success');
       } catch (error) {
-        showToast(error.message || 'No se pudo reenviar el código.', 'error');
+        showToast(error.message || 'No se pudo reenviar el enlace.', 'error');
       }
     };
 
-    window.verifyEmailCode = async function(event) {
-      event?.preventDefault();
-      const code = document.getElementById('emailCodeInput').value.trim();
+    window.checkEmailVerification = async function() {
       try {
-        const verifyCode = httpsCallable(functionsApi, 'verifyEmailCode');
-        await verifyCode({ code });
-        await refreshVerifiedClaims();
+        await reload(currentUser);
+        if (!currentUser?.emailVerified) {
+          showToast('Aún no aparece verificado. Abre el enlace del correo y vuelve a intentar.', 'info');
+          return;
+        }
+        await refreshVerifiedSession();
         showToast('Correo verificado correctamente.', 'success');
       } catch (error) {
-        showToast(error.message || 'No se pudo verificar el código.', 'error');
+        showToast(error.message || 'No se pudo comprobar el correo.', 'error');
       }
     };
 
-    async function refreshVerifiedClaims() {
+    async function refreshVerifiedSession() {
       if (!currentUser) return;
       await currentUser.getIdToken(true);
       const token = await getIdTokenResult(currentUser);
-      userIsVerified = token.claims.strangercamVerified === true;
-      userOtpVerified = userIsVerified && token.claims.otpAuthTime === token.claims.auth_time;
+      userIsVerified = token.claims.email_verified === true;
       userIsModerator = token.claims.moderator === true;
-      if (!userOtpVerified) throw new Error('El código no quedó validado para esta sesión.');
+      if (!userIsVerified) throw new Error('El correo todavía no está verificado.');
       await activateVerifiedSession();
     }
 
@@ -1668,7 +1664,7 @@
         document.getElementById('adminAuthLock').classList.add('hidden');
         document.getElementById('adminDashboard').classList.remove('hidden');
         showToast("Panel de administración desbloqueado", "success");
-      } else if (!demoMode && userIsModerator && userOtpVerified) {
+      } else if (!demoMode && userIsModerator && userIsVerified) {
         isAdminUnlocked = true;
         document.getElementById('adminAuthLock').classList.add('hidden');
         document.getElementById('adminDashboard').classList.remove('hidden');
@@ -2000,11 +1996,10 @@
       termsAccepted = true;
       if (demoMode) {
         startLocalCamera();
-      } else if (userOtpVerified && currentUser) {
+      } else if (userIsVerified && currentUser) {
         activateVerifiedSession();
       } else if (currentUser) {
-        showEmailCodeStep('Solicita un código para verificar ' + (currentUser.email || 'tu correo') + '.');
-        requestEmailVerificationCode().catch((error) => showToast(error.message || 'No se pudo enviar el código.', 'error'));
+        showEmailVerificationStep('Verifica el enlace enviado a ' + (currentUser.email || 'tu correo') + '.');
       } else {
         showAuthModal();
       }

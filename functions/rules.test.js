@@ -8,11 +8,7 @@ const { addDoc, collection, doc, getDoc, setDoc, updateDoc } = require('firebase
 const appId = 'strangercam-prod';
 const roomPath = `artifacts/${appId}/public/data/rooms/room-1`;
 let testEnvironment;
-const verifiedClaims = {
-  strangercamVerified: true,
-  auth_time: 1_700_000_000,
-  otpAuthTime: 1_700_000_000
-};
+const verifiedClaims = { email_verified: true };
 
 function userDb(uid, claims = {}) {
   return testEnvironment.authenticatedContext(uid, { ...verifiedClaims, ...claims }).firestore();
@@ -39,14 +35,12 @@ test.beforeEach(async () => {
   await testEnvironment.clearFirestore();
 });
 
-test('unverified users cannot read or create a queue entry', async () => {
-  const db = userDb('unverified', { strangercamVerified: false });
+test('users without verified email cannot read or create a queue entry', async () => {
+  const db = userDb('unverified', { email_verified: false });
   await assertFails(getDoc(doc(db, documentPath('queue', 'unverified'))));
   await assertFails(setDoc(doc(db, documentPath('queue', 'unverified')), {
     uid: 'unverified', status: 'waiting', timestamp: Date.now()
   }));
-  const staleSessionDb = userDb('stale-session', { auth_time: 1_700_000_001 });
-  await assertFails(getDoc(doc(staleSessionDb, documentPath('queue', 'stale-session'))));
 });
 
 test('verified users can create only their own queue entry', async () => {

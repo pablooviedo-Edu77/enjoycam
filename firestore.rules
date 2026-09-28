@@ -3,8 +3,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function verified() {
       return request.auth != null &&
-        request.auth.token.strangercamVerified == true &&
-        request.auth.token.otpAuthTime == request.auth.token.auth_time;
+        request.auth.token.email_verified == true;
     }
 
     function moderator() {

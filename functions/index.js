@@ -1,19 +1,15 @@
 const { initializeApp, getApps } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');
 const { FieldValue, getFirestore } = require('firebase-admin/firestore');
-const { defineSecret } = require('firebase-functions/params');
 const { HttpsError, onCall } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
-const { createHmac, randomUUID } = require('node:crypto');
-const { generateOtp, hashOtp, verifyOtpHash, isOtpVerifiedForSession } = require('./otp');
+const { randomUUID } = require('node:crypto');
+const { hasVerifiedEmail } = require('./auth');
 
 if (!getApps().length) initializeApp();
 
 const auth = getAuth();
 const db = getFirestore();
-const RESEND_API_KEY = defineSecret('RESEND_API_KEY');
-const EMAIL_FROM = defineSecret('EMAIL_FROM');
-const OTP_HMAC_SECRET = defineSecret('OTP_HMAC_SECRET');
 const APP_ID = 'strangercam-prod';
 const REGION = 'us-central1';
 const REPORT_CATEGORIES = new Set([
@@ -33,8 +29,8 @@ function requireSignedIn(request) {
 
 function requireVerified(request) {
   const user = requireSignedIn(request);
-  if (!isOtpVerifiedForSession(user.token)) {
-    throw new HttpsError('permission-denied', 'Verifica el código de acceso de esta sesión.');
+  if (!hasVerifiedEmail(user.token)) {
+    throw new HttpsError('permission-denied', 'Verifica tu correo antes de continuar.');
   }
   return user;
 }
@@ -48,144 +44,6 @@ async function requireModerator(request) {
   if (ban.exists) throw new HttpsError('permission-denied', 'La cuenta de moderacion esta suspendida.');
   return user;
 }
-
-function normalizedEmailHash(email, secret) {
-  return createHmac('sha256', secret).update(email.trim().toLowerCase()).digest('hex');
-}
-
-exports.requestEmailCode = onCall({
-  region: REGION,
-  secrets: [RESEND_API_KEY, EMAIL_FROM, OTP_HMAC_SECRET]
-}, async (request) => {
-  const caller = requireSignedIn(request);
-  const user = await auth.getUser(caller.uid);
-  if (!user.email) throw new HttpsError('failed-precondition', 'La cuenta no tiene un correo asociado.');
-
-  const now = Date.now();
-  const otp = generateOtp();
-  const hmacSecret = OTP_HMAC_SECRET.value();
-  const emailHash = normalizedEmailHash(user.email, hmacSecret);
-  const sourceIp = request.rawRequest.ip || 'unknown';
-  const ipHash = createHmac('sha256', hmacSecret).update(sourceIp).digest('hex');
-  const rateRef = db.collection('emailRateLimits').doc(emailHash);
-  const ipRateRef = db.collection('otpIpRateLimits').doc(ipHash);
-  const challengeRef = db.collection('emailChallenges').doc(caller.uid);
-
-  await db.runTransaction(async (transaction) => {
-    const [rateSnapshot, ipRateSnapshot, challengeSnapshot] = await Promise.all([
-      transaction.get(rateRef),
-      transaction.get(ipRateRef),
-      transaction.get(challengeRef)
-    ]);
-    const rate = rateSnapshot.data() || {};
-    const ipRate = ipRateSnapshot.data() || {};
-    const recent = challengeSnapshot.data() || {};
-    if (recent.authTime === caller.token.auth_time && recent.sentAt && now - recent.sentAt < 60_000) {
-      throw new HttpsError('resource-exhausted', 'Espera un minuto antes de pedir otro codigo.', {
-        retryAfterSeconds: Math.ceil((60_000 - (now - recent.sentAt)) / 1000)
-      });
-    }
-
-    const hourStart = rate.hourStart || now;
-    const requestCount = now - hourStart >= 3_600_000 ? 0 : (rate.requestCount || 0);
-    if (requestCount >= 5) {
-      throw new HttpsError('resource-exhausted', 'Se alcanzo el limite de codigos para este correo. Intentalo mas tarde.');
-    }
-
-    const ipHourStart = ipRate.hourStart || now;
-    const ipRequestCount = now - ipHourStart >= 3_600_000 ? 0 : (ipRate.requestCount || 0);
-    if (ipRequestCount >= 20) {
-      throw new HttpsError('resource-exhausted', 'Se alcanzo el limite de codigos desde esta red. Intentalo mas tarde.');
-    }
-
-    transaction.set(rateRef, { hourStart: requestCount === 0 ? now : hourStart, requestCount: requestCount + 1 });
-    transaction.set(ipRateRef, {
-      hourStart: ipRequestCount === 0 ? now : ipHourStart,
-      requestCount: ipRequestCount + 1
-    });
-    transaction.set(challengeRef, {
-      codeHash: hashOtp(caller.uid, otp, OTP_HMAC_SECRET.value()),
-      email: user.email,
-      sentAt: now,
-      expiresAt: now + 10 * 60_000,
-      attempts: 0,
-      authTime: caller.token.auth_time
-    });
-  });
-
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${RESEND_API_KEY.value()}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      from: EMAIL_FROM.value(),
-      to: [user.email],
-      subject: 'Tu codigo de acceso a StrangerCam',
-      text: `Tu codigo de verificacion es ${otp}. Caduca en 10 minutos. Si no solicitaste este codigo, puedes ignorar este correo.`,
-      html: `<p>Tu codigo de verificacion es:</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${otp}</p><p>Caduca en 10 minutos. Si no solicitaste este codigo, puedes ignorar este correo.</p>`
-    })
-  });
-
-  if (!response.ok) {
-    await challengeRef.delete();
-    console.error('Resend delivery failed:', response.status, await response.text());
-    throw new HttpsError('unavailable', 'No se pudo enviar el correo de verificacion. Intentalo mas tarde.');
-  }
-  return { sent: true, expiresInSeconds: 600 };
-});
-
-exports.verifyEmailCode = onCall({
-  region: REGION,
-  secrets: [OTP_HMAC_SECRET]
-}, async (request) => {
-  const caller = requireSignedIn(request);
-  const code = typeof request.data?.code === 'string' ? request.data.code : '';
-  if (!/^\d{8}$/.test(code)) throw new HttpsError('invalid-argument', 'Introduce el codigo de 8 digitos.');
-
-  const challengeRef = db.collection('emailChallenges').doc(caller.uid);
-  const result = await db.runTransaction(async (transaction) => {
-    const snapshot = await transaction.get(challengeRef);
-    if (!snapshot.exists) return 'missing';
-    const challenge = snapshot.data();
-    if (challenge.authTime !== caller.token.auth_time) {
-      transaction.delete(challengeRef);
-      return 'session-changed';
-    }
-    if (Date.now() >= challenge.expiresAt) {
-      transaction.delete(challengeRef);
-      return 'expired';
-    }
-    if (challenge.attempts >= 5) return 'locked';
-    if (!verifyOtpHash(caller.uid, code, OTP_HMAC_SECRET.value(), challenge.codeHash)) {
-      transaction.update(challengeRef, { attempts: challenge.attempts + 1 });
-      return 'invalid';
-    }
-    transaction.delete(challengeRef);
-    return 'verified';
-  });
-
-  if (result !== 'verified') {
-    const messages = {
-      missing: 'Solicita un codigo nuevo.',
-      'session-changed': 'La sesión cambió. Solicita un código nuevo.',
-      expired: 'El codigo vencio. Solicita uno nuevo.',
-      locked: 'Se agotaron los intentos. Solicita un codigo nuevo.',
-      invalid: 'El codigo no es correcto.'
-    };
-    throw new HttpsError('failed-precondition', messages[result]);
-  }
-
-  const user = await auth.getUser(caller.uid);
-  if (!user.emailVerified) await auth.updateUser(caller.uid, { emailVerified: true });
-  await auth.setCustomUserClaims(caller.uid, {
-    ...user.customClaims,
-    strangercamVerified: true,
-    otpAuthTime: caller.token.auth_time
-  });
-  return { verified: true };
-});
 
 exports.submitReport = onCall({ region: REGION }, async (request) => {
   const caller = requireVerified(request);

@@ -7,8 +7,8 @@
   },
   "scripts": {
     "test": "npm run check && npm run test:unit",
-    "check": "node --check index.js && node --check otp.js && node --check otp.test.js && node --check rules.test.js && node --check set-moderator.js",
-    "test:unit": "node --test otp.test.js",
+    "check": "node --check index.js && node --check auth.js && node --check auth.test.js && node --check rules.test.js && node --check set-moderator.js",
+    "test:unit": "node --test auth.test.js",
     "test:rules": "node --test rules.test.js",
     "moderator": "node set-moderator.js"
   },

@@ -17,7 +17,7 @@ REQUIRED_IDS = {
     "tosCheck",
     "authModal",
     "emailAuthForm",
-    "emailCodeStep",
+    "emailVerificationStep",
     "chatView",
     "remoteVideo",
     "localVideo",
