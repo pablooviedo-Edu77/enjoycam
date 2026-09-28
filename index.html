@@ -80,7 +80,7 @@
 <body class="h-full flex flex-col font-sans overflow-x-hidden antialiased bg-slate-950 text-slate-100">
 
   <!-- Main Header -->
-  <header class="h-16 border-b border-slate-800 bg-slate-900/80 backdrop-blur-md px-4 lg:px-8 flex items-center justify-between shrink-0 z-30">
+  <header class="min-h-16 h-auto border-b border-slate-800 bg-slate-900/80 backdrop-blur-md px-3 sm:px-4 lg:px-8 py-2 flex flex-wrap items-center justify-between gap-y-2 shrink-0 z-30">
     <div class="flex items-center gap-3">
       <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
         <i class="fa-solid font-bold text-white text-xl fa-video"></i>
@@ -91,7 +91,8 @@
             Stranger<span class="text-indigo-400">Cam</span>
           </h1>
           <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span> Live
+            <span id="platformModeDot" class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+            <span id="platformModeLabel">Conectando</span>
           </span>
         </div>
         <p class="text-xs text-slate-400 hidden sm:block">Videochat aleatorio seguro & moderación en tiempo real</p>
@@ -169,7 +170,7 @@
         <div class="flex items-start gap-3 text-left">
           <input type="checkbox" id="tosCheck" class="mt-1 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500 h-4 w-4">
           <label for="tosCheck" class="text-xs text-slate-300 cursor-pointer select-none">
-            Confirmo que tengo **18 años o más** y acepto cumplir estrictamente las normas de la comunidad.
+            Confirmo que tengo <strong>18 años o más</strong> y acepto cumplir estrictamente las normas de la comunidad.
           </label>
         </div>
 
@@ -428,7 +429,7 @@
                   <i class="fa-solid fa-inbox text-indigo-400"></i>
                   <h3 class="font-bold text-sm text-white">Bandeja de Reportes en Tiempo Real</h3>
                 </div>
-                <span class="text-xs text-slate-400">Firestore Realtime Sync</span>
+                <span id="adminSyncLabel" class="text-xs text-slate-400">Conectando...</span>
               </div>
 
               <div id="adminReportsList" class="p-4 space-y-3 max-h-96 overflow-y-auto">
@@ -575,30 +576,38 @@
       collection, 
       onSnapshot, 
       addDoc, 
-      getDocs 
+      getDocs,
+      runTransaction
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     // Global Environment Configs
     const appId = typeof __app_id !== 'undefined' ? __app_id : 'strangercam-prod';
-    const firebaseConfig = typeof __firebase_config !== 'undefined' 
-      ? JSON.parse(__firebase_config) 
-      : {
-          apiKey: "demo-api-key",
-          authDomain: "demo-app.firebaseapp.com",
-          projectId: "demo-app",
-          storageBucket: "demo-app.appspot.com",
-          messagingSenderId: "123456789",
-          appId: "1:123456789:web:abcdef"
-        };
+    let firebaseConfig = null;
+    try {
+      if (typeof __firebase_config !== 'undefined') {
+        firebaseConfig = typeof __firebase_config === 'string'
+          ? JSON.parse(__firebase_config)
+          : __firebase_config;
+      }
+    } catch (error) {
+      console.warn('Invalid Firebase configuration; using local demo mode.', error);
+    }
+    const hasFirebaseConfig = Boolean(firebaseConfig && firebaseConfig.apiKey && firebaseConfig.projectId);
+    let demoMode = !hasFirebaseConfig;
 
     // Firebase Initialization
     let app, auth, db;
     try {
+      if (!hasFirebaseConfig) throw new Error('Firebase configuration not provided');
       app = initializeApp(firebaseConfig);
       auth = getAuth(app);
       db = getFirestore(app);
     } catch (e) {
-      console.warn("Firebase config fallback initialization mode", e);
+      app = null;
+      auth = null;
+      db = null;
+      demoMode = true;
+      console.info('StrangerCam is running in local demo mode.');
     }
 
     // STATE VARIABLES
@@ -608,15 +617,28 @@
     let remoteStream = null;
     let peerConnection = null;
     let currentRoomId = null;
+    let currentStrangerUid = null;
     let isCaller = false;
+    let chatDataChannel = null;
+    let pendingChatMessages = [];
     let callState = 'idle'; // 'idle', 'searching', 'connected'
     let isMuted = false;
     let isCamOff = false;
     let activeBlacklist = ['spam', 'insulto', 'badword', 'droga'];
+    let localDemoState = { reports: [], bans: [], blacklist: activeBlacklist, announcement: '' };
+    let localPresenceTimer = null;
+    const localSessionId = Math.random().toString(36).slice(2, 12);
     let roomUnsubscribe = null;
+    let queueUnsubscribe = null;
+    let queueCollectionUnsubscribe = null;
+    let candidateUnsubscribes = [];
+    let pairingInProgress = false;
+    let roomSetupStarted = false;
     let bansUnsubscribe = null;
     let reportsUnsubscribe = null;
     let settingsUnsubscribe = null;
+    let presenceUnsubscribe = null;
+    let presenceHeartbeatTimer = null;
     let simCanvasInterval = null;
     let simulatedStrangerActive = false;
     let lastChatLog = [];
@@ -632,6 +654,10 @@
 
     // Authentication Initialization
     async function initAuth() {
+      if (demoMode) {
+        initLocalDemo();
+        return;
+      }
       try {
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
           await signInWithCustomToken(auth, __initial_auth_token);
@@ -639,7 +665,10 @@
           await signInAnonymously(auth);
         }
       } catch (err) {
-        console.error("Auth Error, using anonymous fallback ID:", err);
+        console.warn('Firebase authentication unavailable; switching to local demo mode.', err);
+        demoMode = true;
+        initLocalDemo();
+        return;
       }
 
       onAuthStateChanged(auth, (user) => {
@@ -650,7 +679,82 @@
           userId = 'user_' + Math.random().toString(36).substr(2, 9);
         }
         document.getElementById('headerMyUid').textContent = userId;
+        document.getElementById('platformModeLabel').textContent = 'Firebase Live';
+        document.getElementById('adminSyncLabel').textContent = 'Firestore Realtime Sync';
         initFirestoreListeners();
+      });
+    }
+
+    function readLocalDemoState() {
+      try {
+        const saved = JSON.parse(localStorage.getItem('strangercam-demo-state') || '{}');
+        return {
+          reports: Array.isArray(saved.reports) ? saved.reports : [],
+          bans: Array.isArray(saved.bans) ? saved.bans : [],
+          blacklist: Array.isArray(saved.blacklist) ? saved.blacklist : ['spam', 'insulto', 'badword', 'droga'],
+          announcement: typeof saved.announcement === 'string' ? saved.announcement : ''
+        };
+      } catch (error) {
+        return { reports: [], bans: [], blacklist: ['spam', 'insulto', 'badword', 'droga'], announcement: '' };
+      }
+    }
+
+    function saveLocalDemoState() {
+      try {
+        localStorage.setItem('strangercam-demo-state', JSON.stringify(localDemoState));
+      } catch (error) {
+        showToast('No se pudo guardar en este navegador.', 'error');
+      }
+      renderLocalDemoState();
+    }
+
+    function renderLocalDemoState() {
+      activeBlacklist = localDemoState.blacklist;
+      document.getElementById('statPendingReports').textContent = localDemoState.reports.length;
+      document.getElementById('statBannedUsers').textContent = localDemoState.bans.length;
+      document.getElementById('headerOnlineUsers').textContent = '1';
+      document.getElementById('statActiveUsers').textContent = '1';
+      document.getElementById('statActiveRooms').textContent = callState === 'connected' ? '1' : '0';
+      const badge = document.getElementById('badgePendingReports');
+      badge.textContent = localDemoState.reports.length;
+      badge.classList.toggle('hidden', localDemoState.reports.length === 0);
+      renderAdminReports(localDemoState.reports);
+      renderBlacklistChips();
+      renderAdminBans({ empty: localDemoState.bans.length === 0, forEach: (callback) => {
+        localDemoState.bans.forEach((ban) => callback({ id: ban.uid, data: () => ban }));
+      }});
+      showGlobalAnnouncement(localDemoState.announcement);
+      if (localDemoState.bans.some((ban) => ban.uid === userId)) {
+        const ownBan = localDemoState.bans.find((ban) => ban.uid === userId);
+        disconnectCall();
+        document.getElementById('bannedModal').classList.remove('hidden');
+        document.getElementById('banReasonDisplay').textContent = `Motivo: ${ownBan.reason}`;
+      } else {
+        document.getElementById('bannedModal').classList.add('hidden');
+      }
+    }
+
+    function initLocalDemo() {
+      localDemoState = readLocalDemoState();
+      try {
+        userId = localStorage.getItem('strangercam-demo-uid');
+        if (!userId) {
+          userId = `demo_${Math.random().toString(36).slice(2, 10)}`;
+          localStorage.setItem('strangercam-demo-uid', userId);
+        }
+      } catch (error) {
+        userId = `demo_${Math.random().toString(36).slice(2, 10)}`;
+      }
+      document.getElementById('headerMyUid').textContent = userId;
+      document.getElementById('platformModeLabel').textContent = 'Demo local';
+      document.getElementById('platformModeDot').className = 'w-1.5 h-1.5 rounded-full bg-amber-400';
+      document.getElementById('adminSyncLabel').textContent = 'Datos guardados en este navegador';
+      renderLocalDemoState();
+      window.addEventListener('storage', (event) => {
+        if (event.key === 'strangercam-demo-state') {
+          localDemoState = readLocalDemoState();
+          renderLocalDemoState();
+        }
       });
     }
 
@@ -662,9 +766,40 @@
       return doc(db, 'artifacts', appId, 'public', 'data', collName, docId);
     }
 
+    function syncPresenceState() {
+      if (demoMode || !db || !userId) return;
+      setDoc(getPublicDoc('presence', userId), {
+        uid: userId,
+        lastSeen: Date.now(),
+        inRoom: callState === 'connected',
+        roomId: currentRoomId || null
+      }, { merge: true }).catch((error) => console.warn('Presence update failed:', error));
+    }
+
     // Real-time Listeners
     function initFirestoreListeners() {
       if (!db || !userId) return;
+
+      syncPresenceState();
+      presenceHeartbeatTimer = setInterval(syncPresenceState, 15000);
+      presenceUnsubscribe = onSnapshot(getPublicColl('presence'), (snapshot) => {
+        const activeRooms = new Set();
+        let activeUsers = 0;
+        snapshot.forEach((presenceDoc) => {
+          const presence = presenceDoc.data();
+          if (Date.now() - Number(presence.lastSeen || 0) > 45000) return;
+          activeUsers++;
+          if (presence.inRoom) activeRooms.add(presence.roomId || presenceDoc.id);
+        });
+        document.getElementById('headerOnlineUsers').textContent = activeUsers;
+        document.getElementById('statActiveUsers').textContent = activeUsers;
+        document.getElementById('statActiveRooms').textContent = activeRooms.size;
+      }, (error) => console.warn('Presence listener failed:', error));
+
+      window.addEventListener('beforeunload', () => {
+        clearInterval(presenceHeartbeatTimer);
+        deleteDoc(getPublicDoc('presence', userId)).catch(() => {});
+      }, { once: true });
 
       // 1. Listen for Ban Status on current User
       try {
@@ -729,10 +864,6 @@
         }, (err) => console.log("Reports listener error:", err));
       } catch (e) { console.error(e); }
 
-      // Update online count stat mockup dynamically
-      document.getElementById('headerOnlineUsers').textContent = Math.floor(Math.random() * 40) + 120;
-      document.getElementById('statActiveUsers').textContent = Math.floor(Math.random() * 40) + 120;
-      document.getElementById('statActiveRooms').textContent = Math.floor(Math.random() * 15) + 35;
     }
 
     // Camera & Microphone Access Setup
@@ -780,37 +911,48 @@
       callState = 'searching';
       updateCallUIState('searching');
 
+      if (demoMode) {
+        setTimeout(() => {
+          if (callState === 'searching') startSimulatedStrangerCall();
+        }, 700);
+        return;
+      }
+
       // Attempt Firestore Realtime WebRTC Pairing
       try {
-        const queueColl = getPublicColl('queue');
-        const queueDocs = await getDocs(queueColl);
-        
-        let existingPeerDoc = null;
-        queueDocs.forEach(d => {
-          if (d.id !== userId && !existingPeerDoc) {
-            existingPeerDoc = d;
-          }
+        pairingInProgress = false;
+        roomSetupStarted = false;
+        const queueRef = getPublicDoc('queue', userId);
+        await setDoc(queueRef, { uid: userId, status: 'waiting', timestamp: Date.now() });
+
+        queueUnsubscribe = onSnapshot(queueRef, (snapshot) => {
+          const match = snapshot.data();
+          if (!match || match.status !== 'matched' || callState !== 'searching' || roomSetupStarted) return;
+          roomSetupStarted = true;
+          currentRoomId = match.roomId;
+          currentStrangerUid = match.peerUid;
+          isCaller = match.initiatorUid === userId;
+          stopQueueListeners();
+          setupWebRTCRoom(currentRoomId).catch((error) => {
+            console.error('WebRTC room setup failed:', error);
+            showToast('No se pudo establecer la conexión. Inténtalo de nuevo.', 'error');
+            disconnectCall();
+          });
         });
 
-        if (existingPeerDoc) {
-          // Join existing peer's room as Answerer
-          const matchUid = existingPeerDoc.id;
-          currentRoomId = `room_${matchUid}_${userId}`;
-          await deleteDoc(getPublicDoc('queue', matchUid));
-          
-          isCaller = false;
-          await setupWebRTCRoom(currentRoomId);
-        } else {
-          // Put self in Queue and wait or fallback
-          await setDoc(getPublicDoc('queue', userId), { timestamp: Date.now() });
-          
-          // Timeout to Fallback Interactive Stranger if no real peer joins in 3 seconds
-          setTimeout(() => {
-            if (callState === 'searching') {
-              startSimulatedStrangerCall();
-            }
-          }, 3200);
-        }
+        queueCollectionUnsubscribe = onSnapshot(getPublicColl('queue'), () => {
+          tryMatchQueuePeers().catch((error) => console.error('Queue matching failed:', error));
+        });
+        await tryMatchQueuePeers();
+
+        // Fall back to the interactive demo when no real peer joins.
+        setTimeout(() => {
+          if (callState === 'searching' && !roomSetupStarted) {
+            stopQueueListeners();
+            if (userId && db) deleteDoc(getPublicDoc('queue', userId)).catch(() => {});
+            startSimulatedStrangerCall();
+          }
+        }, 3200);
 
       } catch (err) {
         console.log("Firestore pairing fallback:", err);
@@ -818,9 +960,66 @@
       }
     };
 
+    async function tryMatchQueuePeers() {
+      if (callState !== 'searching' || pairingInProgress || !userId) return;
+      pairingInProgress = true;
+      try {
+        const queueSnapshot = await getDocs(getPublicColl('queue'));
+        const candidates = queueSnapshot.docs
+          .filter((item) => item.id !== userId && item.data().status === 'waiting' && Date.now() - item.data().timestamp < 30000)
+          .sort((first, second) => first.data().timestamp - second.data().timestamp);
+
+        for (const candidate of candidates) {
+          const roomId = `room_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          const selfRef = getPublicDoc('queue', userId);
+          const peerRef = getPublicDoc('queue', candidate.id);
+          const matched = await runTransaction(db, async (transaction) => {
+            const [selfSnapshot, peerSnapshot] = await Promise.all([
+              transaction.get(selfRef),
+              transaction.get(peerRef)
+            ]);
+            if (!selfSnapshot.exists() || !peerSnapshot.exists() ||
+                selfSnapshot.data().status !== 'waiting' || peerSnapshot.data().status !== 'waiting') {
+              return false;
+            }
+
+            const selfTime = selfSnapshot.data().timestamp;
+            const peerTime = peerSnapshot.data().timestamp;
+            const initiatorUid = selfTime < peerTime || (selfTime === peerTime && userId < candidate.id)
+              ? userId
+              : candidate.id;
+            const matchData = { status: 'matched', roomId, initiatorUid };
+            transaction.update(selfRef, { ...matchData, peerUid: candidate.id });
+            transaction.update(peerRef, { ...matchData, peerUid: userId });
+            return true;
+          });
+
+          if (matched) break;
+        }
+      } finally {
+        pairingInProgress = false;
+      }
+    }
+
+    function stopQueueListeners() {
+      if (queueUnsubscribe) {
+        queueUnsubscribe();
+        queueUnsubscribe = null;
+      }
+      if (queueCollectionUnsubscribe) {
+        queueCollectionUnsubscribe();
+        queueCollectionUnsubscribe = null;
+      }
+    }
+
     // Setup WebRTC Connection with Firestore Signaling
     async function setupWebRTCRoom(roomId) {
       peerConnection = new RTCPeerConnection(rtcConfig);
+      if (isCaller) {
+        configureChatDataChannel(peerConnection.createDataChannel('strangercam-chat'));
+      } else {
+        peerConnection.ondatachannel = (event) => configureChatDataChannel(event.channel);
+      }
 
       // Add Local Stream Tracks
       if (localStream) {
@@ -868,13 +1067,13 @@
         });
 
         // Listen for Callee ICE candidates
-        onSnapshot(calleeCandidatesCollection, (snapshot) => {
+        candidateUnsubscribes.push(onSnapshot(calleeCandidatesCollection, (snapshot) => {
           snapshot.docChanges().forEach(async (change) => {
             if (change.type === 'added') {
               await peerConnection.addIceCandidate(new RTCIceCandidate(change.doc.data()));
             }
           });
-        });
+        }));
 
       } else {
         // Create Answer
@@ -884,29 +1083,50 @@
           }
         };
 
-        const roomSnapshot = await getDoc(roomRef);
-        const roomData = roomSnapshot.data();
-        if (roomData && roomData.offer) {
+        roomUnsubscribe = onSnapshot(roomRef, async (roomSnapshot) => {
+          const roomData = roomSnapshot.data();
+          if (!roomData || !roomData.offer || peerConnection.remoteDescription) return;
           await peerConnection.setRemoteDescription(new RTCSessionDescription(roomData.offer));
           const answer = await peerConnection.createAnswer();
           await peerConnection.setLocalDescription(answer);
           await updateDoc(roomRef, { answer: { type: answer.type, sdp: answer.sdp } });
-        }
+        });
 
         // Listen for Caller ICE candidates
-        onSnapshot(callerCandidatesCollection, (snapshot) => {
+        candidateUnsubscribes.push(onSnapshot(callerCandidatesCollection, (snapshot) => {
           snapshot.docChanges().forEach(async (change) => {
             if (change.type === 'added') {
               await peerConnection.addIceCandidate(new RTCIceCandidate(change.doc.data()));
             }
           });
-        });
+        }));
       }
+    }
+
+    function configureChatDataChannel(channel) {
+      chatDataChannel = channel;
+      channel.onopen = () => {
+        while (pendingChatMessages.length) {
+          channel.send(pendingChatMessages.shift());
+        }
+      };
+      channel.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          if (typeof message.text === 'string') receiveChatMessage('Extraño', message.text);
+        } catch (error) {
+          console.warn('Ignored invalid chat data-channel message.');
+        }
+      };
+      channel.onclose = () => {
+        if (chatDataChannel === channel) chatDataChannel = null;
+      };
     }
 
     // Fallback Simulated Stranger (Generates dynamic Canvas video + AI Chat responses)
     function startSimulatedStrangerCall() {
       simulatedStrangerActive = true;
+      currentStrangerUid = `simulated_${Math.random().toString(36).slice(2, 8)}`;
       callState = 'connected';
 
       const canvas = document.getElementById('remoteCanvas');
@@ -962,6 +1182,7 @@
       }, 40);
 
       updateCallUIState('connected');
+      if (demoMode) document.getElementById('statActiveRooms').textContent = '1';
       
       // Auto hello message from simulated stranger
       setTimeout(() => {
@@ -975,17 +1196,30 @@
     window.disconnectCall = async function() {
       callState = 'idle';
       simulatedStrangerActive = false;
+      currentStrangerUid = null;
+      currentRoomId = null;
       clearInterval(simCanvasInterval);
 
       if (peerConnection) {
         peerConnection.close();
         peerConnection = null;
       }
+      if (chatDataChannel) {
+        chatDataChannel.close();
+        chatDataChannel = null;
+      }
+      pendingChatMessages = [];
 
       if (roomUnsubscribe) {
         roomUnsubscribe();
         roomUnsubscribe = null;
       }
+
+      stopQueueListeners();
+      candidateUnsubscribes.forEach((unsubscribe) => unsubscribe());
+      candidateUnsubscribes = [];
+      pairingInProgress = false;
+      roomSetupStarted = false;
 
       if (userId && db) {
         try {
@@ -998,6 +1232,7 @@
       document.getElementById('remotePlaceholder').classList.remove('hidden');
 
       updateCallUIState('idle');
+      if (demoMode) document.getElementById('statActiveRooms').textContent = '0';
     };
 
     // Update UI states based on call stage
@@ -1048,6 +1283,7 @@
         statusDesc.textContent = 'Conéctate con un extraño al azar para iniciar el videochat.';
         placeholderIcon.className = 'fa-solid fa-user-secret';
       }
+      syncPresenceState();
     }
 
     // Send Chat Message
@@ -1078,6 +1314,13 @@
             receiveChatMessage('Extraño', randomReply);
           }
         }, 1000 + Math.random() * 1000);
+      } else if (!demoMode) {
+        const outboundMessage = JSON.stringify({ text });
+        if (chatDataChannel && chatDataChannel.readyState === 'open') {
+          chatDataChannel.send(outboundMessage);
+        } else {
+          pendingChatMessages.push(outboundMessage);
+        }
       }
     };
 
@@ -1091,7 +1334,8 @@
       let filtered = text;
       activeBlacklist.forEach(word => {
         if (!word.trim()) return;
-        const regex = new RegExp(word.trim(), 'gi');
+        const escapedWord = word.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(escapedWord, 'gi');
         filtered = filtered.replace(regex, '****');
       });
       return filtered;
@@ -1149,13 +1393,23 @@
 
       const reportData = {
         reporterUid: userId,
-        reportedUid: 'stranger_' + Math.random().toString(36).substr(2, 6),
+        reportedUid: currentStrangerUid || ('stranger_' + Math.random().toString(36).substr(2, 6)),
         category: category,
         details: details || 'Sin detalles adicionales',
         chatSnippet: lastChatLog.slice(-5).join('\n') || 'Sin mensajes de chat previos',
         timestamp: Date.now(),
         dateString: new Date().toLocaleString()
       };
+
+      if (demoMode) {
+        reportData.id = `report_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        localDemoState.reports.unshift(reportData);
+        saveLocalDemoState();
+        showToast('Reporte guardado en este navegador.', 'success');
+        closeReportModal();
+        findNextStranger();
+        return;
+      }
 
       try {
         await addDoc(getPublicColl('reports'), reportData);
@@ -1237,6 +1491,22 @@
 
     // Ban User Action from Admin
     window.adminBanUser = async function(uidToBan, reportIdToDelete) {
+      if (demoMode) {
+        localDemoState.bans = localDemoState.bans.filter((ban) => ban.uid !== uidToBan);
+        localDemoState.bans.push({
+          uid: uidToBan,
+          bannedAt: Date.now(),
+          bannedDate: new Date().toLocaleString(),
+          reason: 'Baneado por moderación tras reporte de usuario.'
+        });
+        if (reportIdToDelete) {
+          localDemoState.reports = localDemoState.reports.filter((report) => report.id !== reportIdToDelete);
+        }
+        saveLocalDemoState();
+        showToast(`Usuario ${uidToBan} suspendido en este navegador.`, 'success');
+        return;
+      }
+
       try {
         await setDoc(getPublicDoc('bans', uidToBan), {
           uid: uidToBan,
@@ -1256,6 +1526,12 @@
     };
 
     window.dismissReport = async function(reportId) {
+      if (demoMode) {
+        localDemoState.reports = localDemoState.reports.filter((report) => report.id !== reportId);
+        saveLocalDemoState();
+        showToast('Reporte desestimado.', 'info');
+        return;
+      }
       try {
         await deleteDoc(getPublicDoc('reports', reportId));
         showToast("Reporte desestimado.", "info");
@@ -1299,6 +1575,12 @@
     }
 
     window.unbanUser = async function(uidToUnban) {
+      if (demoMode) {
+        localDemoState.bans = localDemoState.bans.filter((ban) => ban.uid !== uidToUnban);
+        saveLocalDemoState();
+        showToast(`Suspensión de ${uidToUnban} revocada.`, 'success');
+        return;
+      }
       try {
         await deleteDoc(getPublicDoc('bans', uidToUnban));
         showToast(`Suspensión de ${uidToUnban} revocada.`, "success");
@@ -1315,6 +1597,7 @@
 
       if (!activeBlacklist.includes(word)) {
         activeBlacklist.push(word);
+        if (demoMode) localDemoState.blacklist = activeBlacklist;
         await saveBlacklistToFirestore();
         showToast(`Palabra "${word}" añadida a la lista negra`, "success");
       }
@@ -1323,11 +1606,17 @@
 
     window.removeBlacklistWord = async function(wordToRemove) {
       activeBlacklist = activeBlacklist.filter(w => w !== wordToRemove);
+      if (demoMode) localDemoState.blacklist = activeBlacklist;
       await saveBlacklistToFirestore();
       showToast(`Palabra "${wordToRemove}" removida`, "info");
     };
 
     async function saveBlacklistToFirestore() {
+      if (demoMode) {
+        localDemoState.blacklist = activeBlacklist;
+        saveLocalDemoState();
+        return;
+      }
       try {
         await setDoc(getPublicDoc('settings', 'config'), { blacklist: activeBlacklist }, { merge: true });
       } catch (e) { console.error(e); }
@@ -1353,6 +1642,14 @@
       const text = input.value.trim();
       if (!text) return;
 
+      if (demoMode) {
+        localDemoState.announcement = text;
+        saveLocalDemoState();
+        showToast('Aviso guardado en este navegador.', 'success');
+        input.value = '';
+        return;
+      }
+
       try {
         await setDoc(getPublicDoc('settings', 'config'), { announcement: text }, { merge: true });
         showToast("Anuncio global emitido", "success");
@@ -1363,6 +1660,12 @@
     };
 
     window.clearGlobalNotice = async function() {
+      if (demoMode) {
+        localDemoState.announcement = '';
+        saveLocalDemoState();
+        showToast('Anuncio limpiado.', 'info');
+        return;
+      }
       try {
         await setDoc(getPublicDoc('settings', 'config'), { announcement: "" }, { merge: true });
         showToast("Anuncio global limpiado", "info");
@@ -1400,6 +1703,13 @@
         dateString: new Date().toLocaleString()
       };
 
+      if (demoMode) {
+        reportData.id = `report_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        localDemoState.reports.unshift(reportData);
+        saveLocalDemoState();
+        showToast('Reporte de prueba creado.', 'info');
+        return;
+      }
       addDoc(getPublicColl('reports'), reportData);
       showToast("Reporte de prueba creado", "info");
     };
