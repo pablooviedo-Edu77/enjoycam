@@ -397,7 +397,7 @@ exports.refreshPublicStats = onSchedule({
   );
   if (staleQueue.length) {
     const batch = db.batch();
-    staleQueue.docs.forEach((queueSnapshot) => batch.delete(queueSnapshot.ref));
+    staleQueue.forEach((queueSnapshot) => batch.delete(queueSnapshot.ref));
     await batch.commit();
   }
   await publicDocument('stats', 'summary').set({
