@@ -11,9 +11,9 @@ Aplicacion de videochat aleatorio con Firebase Authentication, Firestore, WebRTC
 
 ## Plan Spark
 
-Hosting, Authentication Email/Password y Firestore Rules estan configurados para Spark. La app puede registrar usuarios con correo verificado y acceder a Firestore sujeto a las reglas.
+Hosting, Authentication Email/Password y Firestore Rules estan configurados para Spark. La app ofrece una única sala general con chat de texto compartido por Firestore para usuarios con correo verificado; la vista de cámara muestra la cámara local.
 
-El matching transaccional, las acciones de moderacion y la limpieza programada siguen implementados como Cloud Functions. Firebase requiere Blaze para desplegarlas. En Spark esas funciones no se ejecutan, por lo que las salas reales y la moderacion central todavia no quedan operativas. No se debe abrir Firestore Rules para simularlas.
+El video entre varias personas, matching transaccional, acciones de moderacion y limpieza programada siguen implementados como Cloud Functions y requieren Blaze. El chat compartido funciona en Spark sin esas funciones; no se debe abrir Firestore Rules para simular moderacion.
 
 ## Firebase
 

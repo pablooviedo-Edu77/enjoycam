@@ -53,6 +53,19 @@ test('verified users can create only their own queue entry', async () => {
   }));
 });
 
+test('verified users share the default room chat but cannot impersonate another sender', async () => {
+  const alice = userDb('alice');
+  const bob = userDb('bob');
+  const unverified = userDb('unverified', { email_verified: false });
+  const messageCollection = collection(alice, 'artifacts', appId, 'public', 'data', 'messages');
+  const message = { uid: 'alice', text: 'Hola sala', timestamp: Date.now() };
+
+  await assertSucceeds(addDoc(messageCollection, message));
+  await assertSucceeds(getDoc(doc(bob, 'artifacts', appId, 'public', 'data', 'messages', 'message-1')));
+  await assertFails(addDoc(messageCollection, { ...message, uid: 'bob' }));
+  await assertFails(addDoc(collection(unverified, 'artifacts', appId, 'public', 'data', 'messages'), message));
+});
+
 test('presence exposes only a user-owned heartbeat and aggregate counters', async () => {
   const alice = userDb('alice');
   await assertSucceeds(getDoc(doc(alice, documentPath('presence', 'alice'))));

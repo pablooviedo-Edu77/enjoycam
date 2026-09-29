@@ -15,10 +15,10 @@ service cloud.firestore {
     }
 
     function activeRoomContains(appId, roomId) {
-      return roomId is string &&
+      return roomId == 'default' || (roomId is string &&
         exists(/databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomId)) &&
         request.auth.uid in get(/databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomId)).data.participants &&
-        !('endedAt' in get(/databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomId)).data);
+        !('endedAt' in get(/databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomId)).data));
     }
 
     function validPresence(appId) {
@@ -39,6 +39,7 @@ service cloud.firestore {
           (collection == 'presence' && documentId == request.auth.uid) ||
           (collection == 'stats' && documentId == 'summary') ||
           (collection == 'queue' && documentId == request.auth.uid) ||
+          collection == 'messages' ||
           (collection == 'rooms' && request.auth.uid in resource.data.participants) ||
           (collection == 'settings' && documentId == 'config') ||
           (collection == 'reports' && moderator())
@@ -52,7 +53,13 @@ service cloud.firestore {
           request.resource.data.status == 'waiting' &&
           request.resource.data.timestamp is int) ||
         (collection == 'presence' && documentId == request.auth.uid &&
-          validPresence(appId))
+          validPresence(appId)) ||
+        (collection == 'messages' &&
+          request.resource.data.keys().hasOnly(['uid', 'text', 'timestamp']) &&
+          request.resource.data.uid == request.auth.uid &&
+          request.resource.data.text is string && request.resource.data.text.size() > 0 &&
+          request.resource.data.text.size() <= 1000 &&
+          request.resource.data.timestamp is int)
       );
 
       allow update: if appPath(appId) && verified() && notBanned() && (

@@ -261,15 +261,15 @@
                 </div>
               </div>
               <div>
-                <p id="placeholderStatusTitle" class="text-sm font-semibold text-slate-200">Presiona "Buscar Siguiente"</p>
-                <p id="placeholderStatusDesc" class="text-xs text-slate-400 max-w-xs mt-1">Conéctate con un extraño al azar para iniciar el videochat.</p>
+                <p id="placeholderStatusTitle" class="text-sm font-semibold text-slate-200">Sala general</p>
+                <p id="placeholderStatusDesc" class="text-xs text-slate-400 max-w-xs mt-1">Entra para conversar con los usuarios conectados. Video grupal no disponible en Spark.</p>
               </div>
             </div>
 
             <!-- Stranger Badge -->
             <div class="absolute top-3 left-3 z-10 flex items-center gap-2 bg-slate-950/70 backdrop-blur-md px-3 py-1 rounded-lg border border-slate-800 text-xs text-slate-200">
               <span id="strangerStatusDot" class="w-2 h-2 rounded-full bg-slate-500"></span>
-              <span id="strangerLabel" class="font-medium">Extraño: Desconectado</span>
+              <span id="strangerLabel" class="font-medium">Sala: Desconectada</span>
             </div>
 
             <!-- Report Button on Stranger Overlay -->
@@ -302,7 +302,7 @@
             <!-- SKIP / NEXT BUTTON -->
             <button id="nextBtn" onclick="findNextStranger()" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-sm shadow-lg shadow-indigo-600/25 transition-all flex items-center gap-2 active:scale-95">
               <i class="fa-solid fa-forward-step"></i>
-              <span>Buscar Siguiente</span>
+              <span>Entrar a sala</span>
             </button>
 
             <!-- STOP / DISCONNECT BUTTON -->
@@ -624,6 +624,9 @@
       collection, 
       onSnapshot, 
       addDoc, 
+      query,
+      orderBy,
+      limit,
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     // Global Environment Configs
@@ -672,6 +675,9 @@
     let currentRoomId = null;
     let currentStrangerUid = null;
     let isCaller = false;
+    let isDefaultRoom = false;
+    let defaultRoomMessagesUnsubscribe = null;
+    const loadedDefaultMessageIds = new Set();
     let chatDataChannel = null;
     let pendingChatMessages = [];
     let pendingIceCandidates = [];
@@ -1095,49 +1101,43 @@
         return;
       }
 
-      // Attempt Firestore Realtime WebRTC Pairing
-      try {
-        pairingInProgress = false;
-        roomSetupStarted = false;
-        const queueRef = getPublicDoc('queue', userId);
-        await setDoc(queueRef, { uid: userId, status: 'waiting', timestamp: Date.now() });
-
-        queueUnsubscribe = onSnapshot(queueRef, (snapshot) => {
-          const match = snapshot.data();
-          if (!match || match.status !== 'matched' || callState !== 'searching' || roomSetupStarted) return;
-          roomSetupStarted = true;
-          stopQueueListeners();
-          currentRoomId = match.roomId;
-          currentStrangerUid = match.peerUid;
-          isCaller = match.initiatorUid === userId;
-          stopQueueListeners();
-          setupWebRTCRoom(currentRoomId).catch((error) => {
-            console.error('WebRTC room setup failed:', error);
-            showToast('No se pudo establecer la conexión. Inténtalo de nuevo.', 'error');
-            disconnectCall();
-          });
-        });
-
-        queueHeartbeatTimer = setInterval(() => {
-          if (callState === 'searching' && !roomSetupStarted) {
-            getDoc(queueRef).then((snapshot) => {
-              if (snapshot.exists() && snapshot.data().status === 'waiting') {
-                return updateDoc(queueRef, { timestamp: Date.now() });
-              }
-            }).catch((error) => console.warn('Queue heartbeat failed:', error));
-          }
-        }, 10000);
-        queueMatchTimer = setInterval(() => {
-          tryMatchQueuePeers().catch((error) => console.error('Queue matching failed:', error));
-        }, 2500);
-        await tryMatchQueuePeers();
-
-      } catch (err) {
-        console.error('Firestore pairing failed:', err);
-        showToast('No se pudo buscar una sala. Comprueba tu conexión e inténtalo de nuevo.', 'error');
-        await disconnectCall();
-      }
+      await enterDefaultRoom();
     };
+
+    async function enterDefaultRoom() {
+      if (!userIsVerified || !userId || !db) {
+        showToast('Inicia sesión con un correo verificado para entrar a la sala.', 'error');
+        return;
+      }
+
+      isDefaultRoom = true;
+      currentRoomId = 'default';
+      currentStrangerUid = null;
+      simulatedStrangerActive = false;
+      callState = 'connected';
+      document.getElementById('remoteVideo').classList.add('hidden');
+      document.getElementById('remoteCanvas').classList.add('hidden');
+      document.getElementById('remotePlaceholder').classList.remove('hidden');
+      document.getElementById('placeholderStatusTitle').textContent = 'Sala general';
+      document.getElementById('placeholderStatusDesc').textContent = 'Chat compartido para usuarios conectados. El video grupal requiere un servicio SFU y no está disponible en Spark.';
+      document.getElementById('placeholderIcon').className = 'fa-solid fa-users';
+      updateCallUIState('room');
+
+      const messagesQuery = query(getPublicColl('messages'), orderBy('timestamp', 'asc'), limitToLast(100));
+      defaultRoomMessagesUnsubscribe = onSnapshot(messagesQuery, (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type !== 'added' || loadedDefaultMessageIds.has(change.doc.id)) return;
+          loadedDefaultMessageIds.add(change.doc.id);
+          const message = change.doc.data();
+          if (typeof message.text !== 'string' || message.text.length > 1000) return;
+          const isOwnMessage = message.uid === userId;
+          addChatMessageToLog(isOwnMessage ? 'Tú' : 'Usuario', censorText(message.text), isOwnMessage ? 'user' : 'stranger');
+        });
+      }, (error) => {
+        console.error('Default room listener failed:', error);
+        showToast('No se pudo cargar el chat compartido.', 'error');
+      });
+    }
 
     async function tryMatchQueuePeers() {
       if (callState !== 'searching' || pairingInProgress || !userId || !functionsApi) return;
@@ -1403,13 +1403,20 @@
     // Disconnect Current Call
     window.disconnectCall = async function() {
       const leavingRoomId = currentRoomId;
+      const wasDefaultRoom = isDefaultRoom;
       callState = 'idle';
       simulatedStrangerActive = false;
+      isDefaultRoom = false;
       currentStrangerUid = null;
       currentRoomId = null;
       clearInterval(simCanvasInterval);
 
-      if (leavingRoomId && functionsApi && userIsVerified) {
+      if (defaultRoomMessagesUnsubscribe) {
+        defaultRoomMessagesUnsubscribe();
+        defaultRoomMessagesUnsubscribe = null;
+      }
+
+      if (leavingRoomId && !wasDefaultRoom && functionsApi && userIsVerified) {
         try {
           await httpsCallable(functionsApi, 'leaveRoom')({ roomId: leavingRoomId });
         } catch (error) {
@@ -1488,8 +1495,17 @@
         chatBadge.textContent = 'Conectado';
         chatBadge.className = 'text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-medium';
         showToast("¡Conectado con un extraño!", "success");
+      } else if (state === 'room') {
+        label.textContent = 'Sala: General';
+        dot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+        reportBtn.disabled = true;
+        stopBtn.disabled = false;
+        chatInput.disabled = false;
+        sendBtn.disabled = false;
+        chatBadge.textContent = 'Sala compartida';
+        chatBadge.className = 'text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-medium';
       } else {
-        label.textContent = 'Extraño: Desconectado';
+        label.textContent = 'Sala: Desconectada';
         dot.className = 'w-2 h-2 rounded-full bg-slate-500';
         reportBtn.disabled = true;
         stopBtn.disabled = true;
@@ -1497,15 +1513,15 @@
         sendBtn.disabled = true;
         chatBadge.textContent = 'Desconectado';
         chatBadge.className = 'text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-medium';
-        statusTitle.textContent = 'Presiona "Buscar Siguiente"';
-        statusDesc.textContent = 'Conéctate con un extraño al azar para iniciar el videochat.';
-        placeholderIcon.className = 'fa-solid fa-user-secret';
+        statusTitle.textContent = 'Sala general';
+        statusDesc.textContent = 'Entra para conversar con los usuarios conectados. El video grupal requiere un servicio SFU.';
+        placeholderIcon.className = 'fa-solid fa-users';
       }
       syncPresenceState();
     }
 
     // Send Chat Message
-    window.sendChatMessage = function(e) {
+    window.sendChatMessage = async function(e) {
       if (e) e.preventDefault();
       const input = document.getElementById('chatInput');
       let text = input.value.trim();
@@ -1517,6 +1533,16 @@
 
       // Apply Auto-Moderation Blacklist Censorship
       text = censorText(text);
+
+      if (isDefaultRoom) {
+        input.value = '';
+        try {
+          await addDoc(getPublicColl('messages'), { uid: userId, text, timestamp: Date.now() });
+        } catch (error) {
+          showToast('No se pudo enviar el mensaje a la sala.', 'error');
+        }
+        return;
+      }
 
       addChatMessageToLog('Tú', text, 'user');
       input.value = '';
