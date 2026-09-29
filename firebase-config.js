@@ -1,5 +1,5 @@
 window.__firebase_config = {
-	apiKey: "xxxxxxxxxxx1yP2DZwFFbjoVy7Oxc7gxxxxxxxxxjPI_c",
+	apiKey: functions:secrets:set FIREBASE_API_KEY="${{ secrets.FIREBASE_API_KEY }}",
 	authDomain: "igneous-core-391404.firebaseapp.com",
 	projectId: "igneous-core-391404",
 	storageBucket: "igneous-core-391404.firebasestorage.app",
